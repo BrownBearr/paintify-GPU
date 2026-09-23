@@ -12,7 +12,7 @@ The live renderer is built in `build-live/gpu-sbr.exe`. In TouchDesigner, open
 **Dialogs → Textport**, set the Textport to Python, and run this one line:
 
 ```python
-import runpy; runpy.run_path(r'C:\Users\I3row\gpu-sbr\touchdesigner\install_paintify.py')
+import runpy, pathlib; runpy.run_path(str(pathlib.Path.home() / 'gpu-sbr' / 'touchdesigner' / 'install_paintify.py'))
 ```
 
 The installer creates a `paintify` component in `/project1` and saves
