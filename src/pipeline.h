@@ -51,6 +51,9 @@ public:
     // Uploads an RGBA8 image and (re)sizes every render target to match.
     bool setSource(const unsigned char* rgba, int w, int h);
 
+    // GPU-only input path for live Spout frames. The texture must be RGBA8.
+    bool setSourceTexture(GLuint texture, int w, int h);
+
     // (Re)generates the brush tiles for a set of radii. Called whenever the
     // radii or bristle density change; costs well under a millisecond.
     void buildBrushTiles(const std::vector<float>& radii, float bristleDensity);

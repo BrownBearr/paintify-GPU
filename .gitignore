@@ -9,3 +9,4 @@ docs/*.png
 implementation_plan.md
 task.md
 imgui.ini
+__pycache__/

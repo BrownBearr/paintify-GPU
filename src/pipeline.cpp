@@ -226,6 +226,19 @@ bool Pipeline::setSource(const unsigned char* rgba, int w, int h) {
     return true;
 }
 
+bool Pipeline::setSourceTexture(GLuint texture, int w, int h) {
+    if (!texture || w <= 0 || h <= 0) return false;
+    if (w == m_w && h == m_h && m_srcTex) {
+        glCopyImageSubData(m_srcTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_prevSrcTex, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+    }
+    resize(w, h);
+    glCopyImageSubData(texture, GL_TEXTURE_2D, 0, 0, 0, 0,
+                       m_srcTex, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+    glGenerateTextureMipmap(m_srcTex);
+    return true;
+}
+
 void Pipeline::buildBrushTiles(const std::vector<float>& radii, float bristleDensity) {
     if (radii == m_brushRadii && bristleDensity == m_brushDensity && m_brushTex) return;
 
