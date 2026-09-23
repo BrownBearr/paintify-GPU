@@ -8,7 +8,7 @@ curved strokes, brush texture and optional impasto/relaxation.
 
 ## Install on this computer
 
-The renderer is already built in `build/gpu-sbr.exe`. In TouchDesigner, open
+The live renderer is built in `build-live/gpu-sbr.exe`. In TouchDesigner, open
 **Dialogs → Textport**, set the Textport to Python, and run this one line:
 
 ```python
@@ -38,7 +38,7 @@ the new look takes effect. Set **Paintify active** off to stop it.
 
 Live texture sharing uses Spout on the same Windows computer. There is no CPU
 readback in the normal input/output path. A log is written to
-`build/paintify-live.log` if a sender is missing or the bridge fails.
+`build-live/paintify-live.log` if a sender is missing or the bridge fails.
 
 TouchDesigner Non-Commercial limits images to 1280×1280, so full 1920×1080
 requires a license without that limit. The standalone renderer remains able to

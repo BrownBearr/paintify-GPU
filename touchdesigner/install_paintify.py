@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-EXE = ROOT / 'build' / 'gpu-sbr.exe'
+EXE = ROOT / 'build-live' / 'gpu-sbr.exe'
 TOX = ROOT / 'touchdesigner' / 'Paintify.tox'
 
 if not EXE.is_file():
