@@ -1,0 +1,11 @@
+build/
+frames/
+frames_out/
+painted/
+*.png
+!brushes/atlas.png
+assets/test.jpg
+docs/*.png
+implementation_plan.md
+task.md
+imgui.ini
