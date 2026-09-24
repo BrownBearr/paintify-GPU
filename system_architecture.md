@@ -435,18 +435,3 @@ Lucas-Kanade advection *on top of* that rule rather than replacing it: the
 carried canvas is warped along the motion first, so the threshold test asks
 whether the subject changed rather than whether the pixel did. At `--flow 0` the
 behaviour is the web's, unchanged.
-
-## TouchDesigner live bridge
-
-The offline renderer and TouchDesigner bridge share one `Pipeline`. Live Spout
-frames enter through `Pipeline::setSourceTexture`, which preserves the previous
-source for temporal painting and copies the new input entirely on the GPU.
-`Pipeline::canvasTexture` is handed to Spout2 for publication. A hidden GLFW
-window owns the OpenGL 4.6 context; TouchDesigner does not run these shaders
-inside its Vulkan context.
-
-`touchdesigner/install_paintify.py` constructs a component with an In TOP,
-Syphon Spout Out, Syphon Spout In, and Out TOP. The component's callbacks
-manage the external renderer process. Sender names derive from the component
-path so multiple instances can coexist. The renderer caps painting at 12 fps
-by default; TouchDesigner holds the last painted texture between updates.

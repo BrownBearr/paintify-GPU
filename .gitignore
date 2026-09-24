@@ -1,5 +1,4 @@
 build/
-build-live/
 frames/
 frames_out/
 painted/
@@ -10,4 +9,3 @@ docs/*.png
 implementation_plan.md
 task.md
 imgui.ini
-__pycache__/

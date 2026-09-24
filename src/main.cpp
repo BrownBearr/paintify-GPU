@@ -17,7 +17,6 @@
 #include "jobs.h"
 #include "filedialog.h"
 #include "paramfile.h"
-#include "live_spout.h"
 
 #include <cmath>
 #include <cstdio>
@@ -80,12 +79,6 @@ void applyPreset(const Preset& pr, TuningParams& p, RenderConfig& cfg, std::stri
 
 struct Options {
     bool headless = false;
-    bool liveSpout = false;
-    std::string spoutIn = "Paintify Input";
-    std::string spoutOut = "Paintify Output";
-    std::string liveStopFile;
-    uint32_t liveParentPid = 0;
-    double targetFps = 12.0;
     std::string in;
     std::string out = "out.png";
     int dump = 0;
@@ -132,12 +125,6 @@ void usage() {
         "  --in <path>            source image (omitted: synthetic subject)\n"
         "  --out <path>            output PNG for --headless and the S key\n"
         "  --headless              render and exit, no window\n"
-        "  --live-spout            paint live Spout input and publish Spout output\n"
-        "  --spout-in <name>       live input sender name (Paintify Input)\n"
-        "  --spout-out <name>      live output sender name (Paintify Output)\n"
-        "  --target-fps <n>        live painted frames per second (12)\n"
-        "  --live-stop-file <path> exit live mode when this file appears\n"
-        "  --live-parent-pid <n>  exit if the owning process closes\n"
         "  --preset <name>         impressionist | expressionist | pointillist |\n"
         "                          wash   (the web's, value for value)\n"
         "                          detail (this project's own)\n"
@@ -223,12 +210,6 @@ Options parseArgs(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if      (a == "--headless")        o.headless = true;
-        else if (a == "--live-spout")      o.liveSpout = true;
-        else if (a == "--spout-in")        o.spoutIn = next(i);
-        else if (a == "--spout-out")       o.spoutOut = next(i);
-        else if (a == "--target-fps")      o.targetFps = atof(next(i));
-        else if (a == "--live-stop-file")   o.liveStopFile = next(i);
-        else if (a == "--live-parent-pid")   o.liveParentPid = uint32_t(std::strtoul(next(i), nullptr, 10));
         else if (a == "--in")              o.in = next(i);
         else if (a == "--out")             o.out = next(i);
         else if (a == "--dump")            o.dump = atoi(next(i));
@@ -684,7 +665,7 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    if (opt.headless || opt.liveSpout) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    if (opt.headless) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
     GLFWwindow* win = glfwCreateWindow(1600, 900, "gpu-sbr", nullptr, nullptr);
     if (!win) {
@@ -708,7 +689,7 @@ int main(int argc, char** argv) {
     pipe.setFlowLogging(opt.flowLog);
 
     std::string sourceNote;
-    if (!opt.liveSpout && !loadSource(pipe, opt.in, &sourceNote)) {
+    if (!loadSource(pipe, opt.in, &sourceNote)) {
         fprintf(stderr, "no source image\n");
         return 1;
     }
@@ -746,20 +727,6 @@ int main(int argc, char** argv) {
         }
     }
     applyOverrides(opt, params, cfg, &radiiText);
-
-    if (opt.liveSpout) {
-        LiveSpoutConfig live;
-        live.inputName = opt.spoutIn;
-        live.outputName = opt.spoutOut;
-        live.fps = opt.targetFps;
-        live.stopFile = opt.liveStopFile;
-        live.parentPid = opt.liveParentPid;
-        const int result = runLiveSpout(win, pipe, params, cfg, live);
-        pipe.shutdown();
-        glfwDestroyWindow(win);
-        glfwTerminate();
-        return result;
-    }
 
     if (!opt.saveParamsFile.empty()) {
         std::string perr;

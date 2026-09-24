@@ -6,7 +6,6 @@
     "glad",
     "glm",
     "stb",
-    { "name": "spout2", "platform": "windows" },
     {
       "name": "imgui",
       "features": ["glfw-binding", "opengl3-binding"]

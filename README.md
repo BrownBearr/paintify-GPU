@@ -1,7 +1,5 @@
 # gpu-sbr
 
-TouchDesigner live TOP input/output: [Paintify component setup](touchdesigner/README.md).
-
 A GPU port of [PainterlyImageCreatorWeb](https://github.com/BrownBearr/PainterlyImageCreatorWeb)'s
 Hertzmann renderer. The goal is the web version's output, not a new look: the
 placement rule, the stroke path, the brush tiles and the impasto lighting are
