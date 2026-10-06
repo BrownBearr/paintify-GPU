@@ -44,9 +44,9 @@ struct VideoSpec {
     std::string input;
     std::string output;
     double fps = 0.0;           // 0 = take the input's
-    int crf = 18;
+    int crf = 21;
     std::string codec = "libx264";
-    std::string preset = "medium";
+    std::string preset = "slow";
     bool keepAudio = true;
 };
 

@@ -89,9 +89,9 @@ struct Options {
     std::string videoIn;
     std::string outDir = "frames_out";
     double fps = 0.0;          // 0 = take it from the input
-    int crf = 18;
+    int crf = 21;
     std::string vcodec = "libx264";
-    std::string vpreset = "medium";
+    std::string vpreset = "slow";
     bool noAudio = false;
     std::string batchSuffix = "_painted";
     std::string batchFormat = "png";
@@ -165,8 +165,8 @@ void usage() {
         "  --batch <dir> --outdir <dir>    paint every image in a directory\n"
         "  --frames <dir> --outdir <dir>   image sequence, temporal coherence on\n"
         "  --fps <f>               output frame rate (default: the input's)\n"
-        "  --crf <n>               x264 quality, lower is better (default 18)\n"
-        "  --vcodec / --vpreset    encoder and speed preset (libx264, medium)\n"
+        "  --crf <n>               x264 quality, lower is better (default 21)\n"
+        "  --vcodec / --vpreset    encoder and speed preset (libx264, slow)\n"
         "  --no-audio              drop the input's audio track\n"
         "  --suffix <s>            batch output suffix (default _painted)\n"
         "  --format <ext>          batch output format: png | jpg | bmp | tga\n"
@@ -392,7 +392,7 @@ struct Gui {
     std::string videoOut;
     std::string format, suffix;
     double fpsOverride = 0.0;
-    int crf = 18;
+    int crf = 21;
     bool keepAudio = true;
 
     // Export in flight

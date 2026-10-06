@@ -48,9 +48,9 @@ private:
 
 struct EncodeOptions {
     double fps = 30.0;
-    int crf = 18;                 // x264 quality; lower is better
+    int crf = 21;                 // x264 quality; lower is better
     std::string codec = "libx264";
-    std::string preset = "medium";
+    std::string preset = "slow";
     // Copies the audio from this file, when it has any. Empty = no audio.
     std::string audioFrom;
 };

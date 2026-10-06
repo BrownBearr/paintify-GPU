@@ -134,7 +134,7 @@ build\gpu-sbr.exe --video clip.mp4 --out painted.mp4 --temporal-diff 12
 
 Frames stream in and out through ffmpeg as raw RGBA, so nothing hits the disk in
 between. Audio is copied from the input when it has any (`--no-audio` drops it).
-`--fps`, `--crf`, `--vcodec` and `--vpreset` control the encode.
+Video exports default to H.264 CRF 21 with the `slow` preset for smaller files. `--fps`, `--crf`, `--vcodec` and `--vpreset` control the encode; use `--crf 18` for higher quality at a larger size.
 
 ffmpeg and ffprobe must be on PATH; `--video` says so plainly if they are not.
 They are a child process rather than a linked library on purpose: libav* would
