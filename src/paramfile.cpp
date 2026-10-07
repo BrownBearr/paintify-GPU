@@ -92,7 +92,7 @@ bool save(const std::string& path, const TuningParams& p, const RenderConfig& cf
         return false;
     }
 
-    f << "# gpu-sbr parameters\n";
+    f << "# Brushkit parameters\n";
     f << "version 1\n\n";
     f << "radii " << radiiToString(cfg.radii) << "\n";
     f << "underpaint " << underpaintName(cfg.underpaint) << "\n";
@@ -245,11 +245,11 @@ bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
 
     if (unknown && err) {
         char buf[128];
-        snprintf(buf, sizeof(buf), "loaded, but %d %s not recognised",
+        snprintf(buf, sizeof(buf), "%d parameter %s not recognised",
                  unknown, unknown == 1 ? "key was" : "keys were");
         *err = buf;
     }
-    return true;
+    return unknown == 0;
 }
 
 } // namespace paramfile

@@ -1,6 +1,6 @@
 """Runtime embedded in Brushkit.tox by install_brushkit.py.
 
-Starts the gpu-sbr-brushkit renderer in --live-spout mode as a child process,
+Starts the brushkit renderer in --live-spout mode as a child process,
 feeding it the component's input TOP over Spout and reading the painting back.
 """
 import builtins
@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-EXE_NAME = 'gpu-sbr-brushkit.exe'
+EXE_NAME = 'brushkit.exe'
 
 
 def _registry():

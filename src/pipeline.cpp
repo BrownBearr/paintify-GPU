@@ -936,7 +936,7 @@ void Pipeline::relax(TuningParams& p, const RenderConfig& cfg,
         // lose strokes the greedy phase did paint. Leaving the greedy canvas
         // alone is the honest outcome; say so rather than silently degrading.
         fprintf(stderr,
-                "gpu-sbr: %u strokes exceeds the relaxation pool (%u); skipping"
+                "Brushkit: %u strokes exceeds the relaxation pool (%u); skipping"
                 " relaxation for this frame. Raise SBR_POOL_MAX or the"
                 " threshold, or use fewer/larger brush radii.\n",
                 m_poolCount, SBR_POOL_MAX);
@@ -1064,7 +1064,7 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
     uploadParams(p);
 
     // The style block is always bound: with enabled == 0 every shader takes
-    // its original gpu-sbr path.
+    // the classic rendering path.
     const bool style = styleOn();
     const bool bkBrush = style && m_style.brushModel > 0.5f;
     const bool strokesOff = style && m_style.strokesOff > 0.5f;

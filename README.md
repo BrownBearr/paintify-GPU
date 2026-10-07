@@ -1,4 +1,4 @@
-# gpu-sbr-brushkit
+# brushkit
 
 ## The easy way: double-click `Brushkit.bat`
 
@@ -18,12 +18,9 @@ It needs Python 3 with Pillow (`python -m pip install pillow`), and ffmpeg on `P
 
 ## What this repository is
 
-This repository duplicates **gpu-sbr** and adds **brushkit's painting styles on the GPU**. brushkit is the pure-code painting engine in `C:\Cursor Projects\brushkit`.
-The original `C:\Users\I3row\gpu-sbr` is untouched. With `--style none` (the default) this renderer is gpu-sbr stage for stage: on `assets/test.jpg` it draws 32,085 strokes against the original's 32,036, the ~0.3% atomics noise gpu-sbr already documents.
+Brushkit combines a GPU painterly renderer with 23 painting styles. The classic mode (`--style none`) uses Hertzmann strokes and the web-inspired presets. Choosing a style adds procedural brushes, fields, colour treatment, surfaces, and finishing effects.
 
-Adding `--style <name>` changes each stage as follows:
-
-| Stage | Change from gpu-sbr | Ported from |
+| Stage | What the styles add | Inspired by |
 |---|---|---|
 | Brush | Procedural brushkit brush evaluated per fragment on the stroke ribbon. It covers the bristle comb, load and dry-out, tooth-gated dry brush, flat/filbert/round/knife caps with a jagged end, ragged edges, combed grooves, wet pickup and smear, and height with an edge ridge, a start blob and `flatten` | `brushkit/stroke.py` |
 | Direction | Style fields written into the flow `trace.comp` already follows: Cezanne patches, Turner vortex (auto-centred on the light), Van Gogh curl, Munch waves, fallback hand angle, fBm wobble | `brushkit/fields.py` |
@@ -35,7 +32,7 @@ Adding `--style <name>` changes each stage as follows:
 
 ## 23 styles
 
-Run `build\gpu-sbr-brushkit.exe --list-styles` to list them:
+Run `build\brushkit.exe --list-styles` to list them:
 `tempera sfumato chiaroscuro dutch rococo turner ukiyoe sumie watercolor monet seurat cezanne vangogh fauve expressionist cubism gestural pop hockney folk knife alla_prima pastel`
 
 Measured on the RTX 3060 Ti with scenes about 1000 px on the long side: **1.6–20 ms per frame**. The flat print styles take under 1 ms. The Python originals take 5–70 s per image.
@@ -44,11 +41,11 @@ Measured on the RTX 3060 Ti with scenes about 1000 px on the long side: **1.6–
 
 ```sh
 tools\build.bat                                                   # build (MSVC + vcpkg)
-build\gpu-sbr-brushkit.exe --style turner                         # GUI: style menu + style sliders
-build\gpu-sbr-brushkit.exe --headless --in photo.jpg --style cezanne --out painted.png
-build\gpu-sbr-brushkit.exe --video clip.mp4 --out painted.mp4 --style vangogh --temporal-diff 12 --flow 4
-build\gpu-sbr-brushkit.exe --in clip.mp4 --style monet --play     # paint the clip live in the window
-build\gpu-sbr-brushkit.exe --live-spout --style ukiyoe            # TouchDesigner / Spout, realtime
+build\brushkit.exe --style turner                         # GUI: style menu + style sliders
+build\brushkit.exe --headless --in photo.jpg --style cezanne --out painted.png
+build\brushkit.exe --video clip.mp4 --out painted.mp4 --style vangogh --temporal-diff 12 --flow 4
+build\brushkit.exe --in clip.mp4 --style monet --play     # paint the clip live in the window
+build\brushkit.exe --live-spout --style ukiyoe            # TouchDesigner / Spout, realtime
 ```
 
 - **`--style-scale <f>`** sets the stroke size. By default it follows the image: 1.0 at a 1000 px long side, 1.92 at 1080p. Every other flag still overrides the style, for example `--style cezanne --threshold 18`.
@@ -74,7 +71,7 @@ These are on only when a style is on:
 
 ---
 
-# gpu-sbr (the renderer this duplicates)
+# Classic renderer
 
 A GPU port of [PainterlyImageCreatorWeb](https://github.com/BrownBearr/PainterlyImageCreatorWeb)'s
 Hertzmann renderer. The goal is the web version's output, not a new look: the
@@ -91,7 +88,7 @@ Relaxation"**, and it paints **video and image batches** directly.
 
 Measured on an RTX 3060 Ti, `impressionist` preset:
 
-| Image | Drawn strokes | gpu-sbr | + relaxation (4 iters) | worker.js (1 CPU thread) |
+| Image | Drawn strokes | Classic GPU mode | + relaxation (4 iters) | worker.js (1 CPU thread) |
 |---|---|---|---|---|
 | 960 x 1280 | 32K | **2.4 ms** | 43 ms | 173,000 ms |
 | 1920 x 1080 | 31K | **3.7 ms** | 22 ms | — |
@@ -110,16 +107,13 @@ Video, end to end including ffmpeg decode and x264 encode:
 Wall time is dominated by ffmpeg rather than the renderer; `--vpreset ultrafast`
 trades file size for throughput.
 
-Output agreement is verified rather than asserted: on that image gpu-sbr differs
-from `worker.js` by exactly as much as `worker.js` differs from *itself* across
-two runs (it uses `Math.random()`), which is the floor any port can reach.
+The classic renderer was compared with `worker.js` on a reference image. Its measured difference was within the variation between two `worker.js` runs (which use `Math.random()`).
 Per-layer stroke counts agree within 1%. See [docs/comparison.md](docs/comparison.md)
 for the method and the numbers.
 
 ## Build
 
-Requires the MSVC Build Tools (or any C++17 compiler), CMake >= 3.21, and vcpkg.
-Dependencies (`glfw3`, `glad`, `glm`, `stb`, `imgui`) come from `vcpkg.json`.
+Requires Windows, MSVC Build Tools, CMake >= 3.21, vcpkg, and an OpenGL 4.6 GPU. Dependencies (`glfw3`, `glad`, `glm`, `stb`, `imgui`, `Spout2`) come from `vcpkg.json`.
 
 ```sh
 tools\build.bat            # loads vcvars64, configures with Ninja, builds
@@ -151,19 +145,19 @@ to move to a different frame.
 From a terminal:
 
 ```sh
-build\gpu-sbr.exe                                          # interactive, synthetic subject
-build\gpu-sbr.exe --in photo.jpg                           # interactive, your image
-build\gpu-sbr.exe --headless --in photo.jpg --out painted.png
-build\gpu-sbr.exe --in photo.jpg --preset expressionist --impasto 0.3 --impasto-light 0.3
+build\brushkit.exe                                          # interactive, synthetic subject
+build\brushkit.exe --in photo.jpg                           # interactive, your image
+build\brushkit.exe --headless --in photo.jpg --out painted.png
+build\brushkit.exe --in photo.jpg --preset expressionist --impasto 0.3 --impasto-light 0.3
 
 # painterly video; audio is carried over from the input
-build\gpu-sbr.exe --video clip.mp4 --out painted.mp4 --temporal-diff 12
+build\brushkit.exe --video clip.mp4 --out painted.mp4 --temporal-diff 12
 
 # every image in a folder
-build\gpu-sbr.exe --batch photos --outdir painted --format jpg
+build\brushkit.exe --batch photos --outdir painted --format jpg
 
 # Hertzmann 2001 relaxation on top of the greedy result
-build\gpu-sbr.exe --headless --in photo.jpg --out painted.png --relax 4
+build\brushkit.exe --headless --in photo.jpg --out painted.png --relax 4
 ```
 
 `--help` lists every flag. The ones worth knowing:
@@ -205,7 +199,7 @@ drive a `--video` or `--batch` render without being retyped as thirty flags.
 ## Video
 
 ```sh
-build\gpu-sbr.exe --video clip.mp4 --out painted.mp4 --temporal-diff 12
+build\brushkit.exe --video clip.mp4 --out painted.mp4 --temporal-diff 12
 ```
 
 Frames stream in and out through ffmpeg as raw RGBA, so nothing hits the disk in
@@ -279,7 +273,7 @@ tables and the reasoning.
 ## Batch images
 
 ```sh
-build\gpu-sbr.exe --batch photos --outdir painted --format jpg --suffix _paint
+build\brushkit.exe --batch photos --outdir painted --format jpg --suffix _paint
 ```
 
 Each image is independent — no temporal carry-over — and the size may change
@@ -423,7 +417,7 @@ and the approximations.
 
 At `curvature: 0.0` the web's stroke walk is degenerate on its first step and
 every stroke comes back with a single point, which draws nothing — so the web's
-own `pointillist` preset paints only the underpaint. gpu-sbr seeds the initial
+own `pointillist` preset paints only the underpaint. Brushkit seeds the initial
 direction from the gradient instead, which is bit-identical for every curvature
 above 0 and turns curvature 0 into the straight dabs the preset intends.
 Details in [docs/comparison.md](docs/comparison.md).

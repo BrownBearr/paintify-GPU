@@ -50,7 +50,7 @@ int main(int argc, char** argv) {
     char modulePath[MAX_PATH] = {};
     GetModuleFileNameA(nullptr, modulePath, MAX_PATH);
     const std::string renderer =
-        (std::filesystem::path(modulePath).parent_path() / "gpu-sbr-brushkit.exe").string();
+        (std::filesystem::path(modulePath).parent_path() / "brushkit.exe").string();
     std::string cmd = "\"" + renderer + "\" --live-spout --spout-in \"Brushkit Smoke Input\" "
         "--spout-out \"Brushkit Smoke Output\"";
     cmd += live ? " --target-fps 30" : " --target-fps 12";

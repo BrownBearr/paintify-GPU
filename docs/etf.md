@@ -3,7 +3,7 @@
 Kang, Lee & Chui 2007, *Coherent Line Drawing*, section 3, applied to the
 per-layer direction field. `--etf <n>`, off by default.
 
-This is the first stage in gpu-sbr with **no counterpart in worker.js**, so it
+This is the first classic rendering stage with **no counterpart in worker.js**, so it
 cannot be verified against the web renderer the way the rest of the port was.
 That is why it is opt-in and why it ships with its own measurement rather than
 a screenshot.

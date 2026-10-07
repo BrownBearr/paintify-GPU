@@ -1,4 +1,4 @@
-# gpu-sbr architecture
+# Brushkit architecture
 
 This renderer exists to reproduce [PainterlyImageCreatorWeb](https://github.com/BrownBearr/PainterlyImageCreatorWeb)'s
 `paintHertzmann` output on the GPU. That constraint decides most of the design:
@@ -438,10 +438,9 @@ behaviour is the web's, unchanged.
 
 ---
 
-# The brushkit layer (gpu-sbr-brushkit)
+# Style layer
 
-This repository duplicates gpu-sbr. Everything above still describes the core.
-This section records what the style system adds and the rules that keep it verifiable.
+Brushkit has a classic renderer and a style layer. The earlier sections describe the classic rendering stages. This section records what the style system adds and the rules that keep it verifiable.
 
 ## The one invariant
 
@@ -449,7 +448,7 @@ This section records what the style system adds and the rules that keep it verif
 - The style UBO (binding 1) is always bound, and every shader tests `styleOn()` or `brushkitBrush()` before doing anything new.
 - The `stroke.frag` height output changed from `float` to `vec4`. The web model writes `.a = 0` and still blends `ONE, ONE`, so it is identical.
 
-Check it with `--style none` on `assets/test.jpg`: the drawn-stroke count must stay within ~0.3% of gpu-sbr's (32,085 vs 32,036 when this was written).
+Check classic mode with `--style none` on `launcher/sample.jpg`. Its rendering path should bypass the style-only stages.
 
 ## Data added to the frame
 
@@ -497,10 +496,10 @@ brushkit paints a style in several passes with different brushes. Here each Hert
 ## Verification
 
 ```
-build\gpu-sbr-brushkit.exe --headless --in assets\test.jpg --out a.png            # regression vs gpu-sbr
-build\gpu-sbr-brushkit.exe --headless --in <scene> --style <name> --out b.png    # each style
-build\gpu-sbr-brushkit.exe --video in.mp4 --out o.mp4 --style turner --temporal-diff 12 --flow 4
-build\gpu-sbr-brushkit.exe --in in.mp4 --style turner --play                     # GUI realtime, logs fps
+build\brushkit.exe --headless --in launcher\sample.jpg --style none --out a.png
+build\brushkit.exe --headless --in <scene> --style <name> --out b.png    # each style
+build\brushkit.exe --video in.mp4 --out o.mp4 --style turner --temporal-diff 12 --flow 4
+build\brushkit.exe --in in.mp4 --style turner --play                     # GUI realtime, logs fps
 build\brushkit-spout-smoke.exe --live --style turner                             # TouchDesigner path
 ```
 
@@ -510,7 +509,7 @@ A Tkinter + Pillow front end. It never paints anything itself; it drives the ren
 
 | Launcher action | Renderer process |
 |---|---|
-| Previews, gallery thumbnails, **Save painting** | One long-lived `gpu-sbr-brushkit --serve` |
+| Previews, gallery thumbnails, **Save painting** | One long-lived `brushkit --serve` |
 | **Export painted video** | `--video in --out out.mp4 <look> --temporal-diff 12 --flow 4` (steady) or `--temporal-diff 0` |
 | **Fine-tune in the editor** / **Play it painted** | The ImGui window: `--in <file> <look> [--play]` |
 | **Start live** | `--live-spout <look> --live-parent-pid <launcher> --live-stop-file <cache>\live.stop` |

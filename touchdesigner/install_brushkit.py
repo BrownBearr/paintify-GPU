@@ -1,9 +1,9 @@
 """Run inside TouchDesigner to create a reusable Brushkit.tox component.
 
 Textport (Python):
-    import runpy; runpy.run_path(r'C:\\Users\\I3row\\gpu-sbr-brushkit\\touchdesigner\\install_brushkit.py')
+    import runpy; runpy.run_path(r'C:\\Users\\I3row\\Brushkit\\touchdesigner\\install_brushkit.py')
 
-The component has one TOP in and one TOP out. It runs gpu-sbr-brushkit in
+The component has one TOP in and one TOP out. It runs brushkit in
 --live-spout mode and paints the input in any brushkit style in realtime.
 """
 
@@ -12,17 +12,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / 'build'
-EXE = BUILD / 'gpu-sbr-brushkit.exe'
+EXE = BUILD / 'brushkit.exe'
 TOX = ROOT / 'Brushkit.tox'
 
 if not EXE.is_file():
-    raise FileNotFoundError('Build gpu-sbr-brushkit first (tools\\build.bat): ' + str(EXE))
+    raise FileNotFoundError('Build brushkit first (tools\\build.bat): ' + str(EXE))
 
 RUNTIME = (Path(__file__).parent / 'brushkit_runtime.py').read_text(encoding='utf-8')
 
-# Keys and labels match `gpu-sbr-brushkit.exe --list-styles`.
+# Keys and labels match `brushkit.exe --list-styles`.
 STYLES = [
-    ('none', 'Original gpu-sbr (use Look)'),
+    ('none', 'Classic renderer (use Look)'),
     ('tempera', 'Egg Tempera - Early Renaissance'),
     ('sfumato', 'Sfumato - Leonardo'),
     ('chiaroscuro', 'Chiaroscuro - Caravaggio / Rembrandt'),
@@ -104,7 +104,7 @@ def install():
     page.appendInt('Flow', label='Optical flow levels')
     page.appendStr('Executable', label='Renderer executable override')
 
-    classic = comp.appendCustomPage('Original gpu-sbr')
+    classic = comp.appendCustomPage('Classic renderer')
     classic.appendMenu('Preset', label='Look (Style = none)')
     comp.par.Preset.menuNames = ['impressionist', 'expressionist', 'pointillist', 'wash', 'detail']
     comp.par.Preset.menuLabels = ['Impressionist', 'Expressionist', 'Pointillist', 'Wash', 'Detail']
@@ -173,7 +173,7 @@ def install():
     cleanup.par.op = '..'
     cleanup.par.destroy = True
 
-    for name in ('gpu-sbr-brushkit.exe', 'glfw3.dll', 'Spout.dll'):
+    for name in ('brushkit.exe', 'glfw3.dll', 'Spout.dll'):
         path = BUILD / name
         if not path.is_file():
             raise FileNotFoundError('Build the renderer first: ' + str(path))

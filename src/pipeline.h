@@ -56,7 +56,7 @@ public:
     bool setSourceTexture(GLuint texture, int w, int h);
 
     // The brushkit style. Persists across renders; `enabled == 0` (the
-    // default) is the original gpu-sbr pipeline, stage for stage.
+    // default) is the classic rendering pipeline.
     void setStyle(const StyleParams& s) { m_style = s; }
     const StyleParams& style() const { return m_style; }
 

@@ -6,11 +6,11 @@
 // (std140, binding 1). Every member is a float and they come in groups of four,
 // so the std140 layout is a flat array of vec4s -- keep it that way.
 //
-// With `enabled == 0` every stage behaves exactly like the original gpu-sbr,
+// With `enabled == 0` every stage behaves exactly like the classic renderer,
 // which is what keeps the port verifiable against it.
 struct StyleParams {
     // --- s0: master switches -------------------------------------------------
-    float enabled = 0.f;        // 0 = original gpu-sbr behaviour everywhere
+    float enabled = 0.f;        // 0 = classic rendering behaviour everywhere
     float brushModel = 0.f;     // 0 = web brush tiles, 1 = brushkit procedural brush
     float strokesOff = 0.f;     // 1 = no stroke layers (flat / print styles)
     float widthScale = 1.f;     // ribbon half-width = radius * widthScale

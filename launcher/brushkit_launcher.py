@@ -1,11 +1,11 @@
-"""Brushkit launcher: a point-and-click front end for gpu-sbr-brushkit.exe.
+"""Brushkit launcher: a point-and-click front end for brushkit.exe.
 
 Pick a picture or a video, pick a style, see it painted, then save it,
 export the video, play it painted in a window, or paint a live
 TouchDesigner feed. The renderer does all of the painting; this window
 only drives it:
 
-  previews and stills   one warm `gpu-sbr-brushkit --serve` process
+  previews and stills   one warm `brushkit --serve` process
                         (it starts in ~1 s, then paints a preview in ~30 ms)
   video export          `--video in --out out.mp4`, progress read from stdout
   play / fine-tune      the renderer's own window (`--in ... [--play]`)
@@ -46,7 +46,7 @@ except ImportError:                       # pythonw has no console to print to
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-EXE = ROOT / "build" / "gpu-sbr-brushkit.exe"
+EXE = ROOT / "build" / "brushkit.exe"
 BUILD_BAT = ROOT / "tools" / "build.bat"
 TD_README = ROOT / "touchdesigner" / "README.md"
 SAMPLE = HERE / "sample.jpg"
@@ -382,7 +382,7 @@ class StyleCard(tk.Frame):
         self.selected = False
         self.img = tk.Label(self, image=placeholder, bg=C["well"], bd=0)
         self.img.pack(fill="x")
-        name = "Original gpu-sbr" if info["key"] == "none" else info["name"]
+        name = "Classic renderer" if info["key"] == "none" else info["name"]
         sub = "Hertzmann strokes, no style" if info["key"] == "none" else \
             f"{info['era']} · {info['years']}"
         self.name = tk.Label(self, text=name, bg=C["card"], fg=C["text"], font=fonts["card"],
@@ -868,10 +868,10 @@ class App:
         self.renderer.start()
 
     def build_renderer(self):
-        subprocess.Popen(["cmd", "/c", "start", "Build gpu-sbr-brushkit", "cmd", "/k",
+        subprocess.Popen(["cmd", "/c", "start", "Build brushkit", "cmd", "/k",
                           str(BUILD_BAT)], cwd=str(ROOT))
         self.status("Building in a new console window. When it says it has linked "
-                    "gpu-sbr-brushkit.exe, press Check again.")
+                    "brushkit.exe, press Check again.")
 
     def on_ready(self, styles, gpu):
         self.ready = True
@@ -922,7 +922,7 @@ class App:
             card.set_selected(k == key)
         info = self.style_info(key)
         if key == "none":
-            self.st_name.configure(text="Original gpu-sbr")
+            self.st_name.configure(text="Classic renderer")
             self.st_era.configure(text="Hertzmann 1998 painterly rendering")
         else:
             self.st_name.configure(text=info["name"])

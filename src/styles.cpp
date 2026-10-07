@@ -573,8 +573,8 @@ struct Entry { Info info; ApplyFn fn; };
 
 const std::vector<Entry>& entries() {
     static const std::vector<Entry> e = {
-        {{"none", "Original gpu-sbr", "-", "-", "PainterlyImageCreatorWeb",
-          "The unmodified Hertzmann port: web brush tiles, web presets."}, nullptr},
+        {{"none", "Classic renderer", "-", "-", "PainterlyImageCreatorWeb",
+          "Hertzmann strokes with web-inspired brush tiles and presets."}, nullptr},
         {{"tempera", "Egg Tempera Hatching", "Early Renaissance", "1300-1500",
           "Fra Angelico, Botticelli", "Flat colour, then fine value hatches over a gesso panel."}, tempera},
         {{"sfumato", "Sfumato", "High Renaissance", "1480-1520", "Leonardo da Vinci",

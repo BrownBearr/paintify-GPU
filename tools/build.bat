@@ -1,5 +1,5 @@
 @echo off
-REM Configures and builds gpu-sbr with the MSVC Build Tools + Ninja + vcpkg.
+REM Configures and builds Brushkit with the MSVC Build Tools + Ninja + vcpkg.
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul
 if errorlevel 1 exit /b 1
 set "NINJA=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"

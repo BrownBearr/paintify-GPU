@@ -53,7 +53,7 @@ const Preset kPresets[] = {
     // the colour that is already on the canvas and the dabs never show.
     {"pointillist",   "4,2",       3,  1,   0.0f, 30.f, 0.75f, 0.85f, 0.10f, 0.15f, 0.10f, 0.00f, Underpaint::Average},
     {"wash",          "20,10",    32, 10,   0.7f, 80.f, 1.5f,  0.40f, 0.20f, 0.30f, 0.20f, 0.00f, Underpaint::Blur},
-    // gpu-sbr's own: a tight threshold and a fine finest layer, for detail.
+    // A detail preset: a tight threshold and a fine finest layer.
     {"detail",        "6,3,1.5",  10,  4,   1.0f, 20.f, 1.0f,  1.00f, 0.00f, 0.00f, 0.00f, 0.50f, Underpaint::Blur},
 };
 constexpr int kPresetCount = int(sizeof(kPresets) / sizeof(kPresets[0]));
@@ -121,7 +121,7 @@ struct Options {
     bool flowLog = false;
     bool jitterPerFrame = false;
     // brushkit
-    std::string style;              // empty / "none" = original gpu-sbr
+    std::string style;              // empty / "none" = classic renderer
     float styleScale = NAN;         // NaN = from the image size
     float styleScaleMult = 1.f;     // multiplies the automatic stroke size
     bool listStyles = false;
@@ -138,10 +138,10 @@ struct Options {
 
 void usage() {
     printf(
-        "gpu-sbr-brushkit -- gpu-sbr with brushkit's painting styles on the GPU\n\n"
+        "Brushkit -- GPU painting styles and classic rendering\n\n"
         " Styles (brushkit)\n"
         "  --style <name>          paint in a brushkit style (--list-styles);\n"
-        "                          'none' is the original gpu-sbr renderer\n"
+        "                          'none' selects the classic renderer\n"
         "  --style-scale <f>       stroke size; default follows the image size\n"
         "                          (1.0 at a 1000 px long side)\n"
         "  --style-scale-mult <f>  multiply the automatic stroke size (1.0)\n"
@@ -245,7 +245,14 @@ void usage() {
 
 Options parseArgs(int argc, char** argv) {
     Options o;
-    auto next = [&](int& i) -> const char* { return (i + 1 < argc) ? argv[++i] : ""; };
+    auto next = [&](int& i) -> const char* {
+        if (i + 1 >= argc || argv[i + 1][0] == '\0' ||
+            (argv[i + 1][0] == '-' && argv[i + 1][1] == '-')) {
+            fprintf(stderr, "missing value for %s\n", argv[i]);
+            std::exit(2);
+        }
+        return argv[++i];
+    };
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if      (a == "--headless")        o.headless = true;
@@ -322,7 +329,10 @@ Options parseArgs(int argc, char** argv) {
         }
         else if (a == "--no-underpaint") { o.haveUnderpaint = true; o.underpaint = Underpaint::None; }
         else if (a == "--help" || a == "-h") { usage(); exit(0); }
-        else fprintf(stderr, "unknown option %s (try --help)\n", a.c_str());
+        else {
+            fprintf(stderr, "unknown option %s (try --help)\n", a.c_str());
+            std::exit(2);
+        }
     }
     return o;
 }
@@ -407,8 +417,9 @@ bool loadSource(Pipeline& pipe, const std::string& path, std::string* note) {
             *note = path + "  " + std::to_string(w) + "x" + std::to_string(h);
             return ok;
         }
-        fprintf(stderr, "could not read %s (%s); falling back to the synthetic subject\n",
+        fprintf(stderr, "could not read %s (%s)\n",
                 path.c_str(), stbi_failure_reason());
+        return false;
     }
     const int w = 1920, h = 1080;
     const std::vector<unsigned char> px = syntheticImage(w, h);
@@ -416,14 +427,16 @@ bool loadSource(Pipeline& pipe, const std::string& path, std::string* note) {
     return pipe.setSource(px.data(), w, h);
 }
 
-void writePng(const std::string& path, const std::vector<unsigned char>& px, int w, int h) {
+bool writePng(const std::string& path, const std::vector<unsigned char>& px, int w, int h) {
     // Canvas texel row 0 is image row 0 (stroke.vert does not flip y), and
     // readCanvas hands back texel rows in order, so the buffer is already
     // top-row-first and must not be flipped again.
-    if (!stbi_write_png(path.c_str(), w, h, 4, px.data(), w * 4))
+    if (!stbi_write_png(path.c_str(), w, h, 4, px.data(), w * 4)) {
         fprintf(stderr, "failed to write %s\n", path.c_str());
-    else
-        printf("wrote %s (%dx%d)\n", path.c_str(), w, h);
+        return false;
+    }
+    printf("wrote %s (%dx%d)\n", path.c_str(), w, h);
+    return true;
 }
 
 // ── GUI state ──────────────────────────────────────────────────────────────
@@ -733,7 +746,7 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
     if (opt.headless || opt.liveSpout || opt.serve) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
-    GLFWwindow* win = glfwCreateWindow(1600, 900, "gpu-sbr-brushkit", nullptr, nullptr);
+    GLFWwindow* win = glfwCreateWindow(1600, 900, "brushkit", nullptr, nullptr);
     if (!win) {
         fprintf(stderr, "need an OpenGL 4.6 core context\n");
         glfwTerminate();
@@ -845,7 +858,10 @@ int main(int argc, char** argv) {
     }
 
     std::string sourceNote;
-    if (!opt.liveSpout && !loadSource(pipe, opt.in, &sourceNote)) {
+    // Interactive video is decoded by acceptPaths below, not by stb_image.
+    const bool guiVideoInput = !opt.headless && !opt.in.empty() &&
+                               media::isVideoExtension(opt.in);
+    if (!opt.liveSpout && !loadSource(pipe, guiVideoInput ? "" : opt.in, &sourceNote)) {
         fprintf(stderr, "no source image\n");
         return 1;
     }
@@ -866,8 +882,10 @@ int main(int argc, char** argv) {
                 break;
             }
         }
-        if (!found) fprintf(stderr, "unknown preset '%s'; using impressionist\n",
-                            opt.preset.c_str());
+        if (!found) {
+            fprintf(stderr, "unknown preset '%s'\n", opt.preset.c_str());
+            return 2;
+        }
     }
     // A saved file sits between the preset and the individual flags: it is a
     // whole look, so it should replace the preset, but an explicit --threshold
@@ -877,9 +895,10 @@ int main(int argc, char** argv) {
     bool fileStyle = false;
     if (!opt.paramsFile.empty()) {
         std::string perr;
-        if (!paramfile::load(opt.paramsFile, &params, &cfg, &perr, &styleP, &fileStyleKey, &fileStyle))
+        if (!paramfile::load(opt.paramsFile, &params, &cfg, &perr, &styleP, &fileStyleKey, &fileStyle)) {
             fprintf(stderr, "%s\n", perr.c_str());
-        else {
+            return 1;
+        } else {
             if (!perr.empty()) fprintf(stderr, "%s: %s\n", opt.paramsFile.c_str(),
                                        perr.c_str());
             radiiText = radiiToString(cfg.radii);
@@ -898,8 +917,8 @@ int main(int argc, char** argv) {
     if (!opt.style.empty()) {
         styleIdx = styles::indexOf(opt.style);
         if (styleIdx < 0) {
-            fprintf(stderr, "unknown style '%s' (try --list-styles); using none\n", opt.style.c_str());
-            styleIdx = 0;
+            fprintf(stderr, "unknown style '%s' (try --list-styles)\n", opt.style.c_str());
+            return 2;
         }
     } else if (keepFileStyle) {
         styleIdx = std::max(0, styles::indexOf(fileStyleKey));
@@ -937,10 +956,12 @@ int main(int argc, char** argv) {
     if (!opt.saveParamsFile.empty()) {
         std::string perr;
         if (!paramfile::save(opt.saveParamsFile, params, cfg, &perr, &styleP,
-                             styles::list()[size_t(styleIdx)].key))
+                             styles::list()[size_t(styleIdx)].key)) {
             fprintf(stderr, "%s\n", perr.c_str());
-        else
+            return 1;
+        } else {
             printf("wrote %s\n", opt.saveParamsFile.c_str());
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1100,13 +1121,13 @@ int main(int argc, char** argv) {
         glFinish();
         pipe.refreshStats();
         if (opt.dump > 0) pipe.dumpStrokes(opt.dump);
-        writePng(opt.out, pipe.readCanvas(), pipe.width(), pipe.height());
+        const bool wrote = writePng(opt.out, pipe.readCanvas(), pipe.width(), pipe.height());
         printf("source: %s\n", sourceNote.c_str());
         printTimings(pipe, params.relaxAreaWeight);
         pipe.shutdown();
         glfwDestroyWindow(win);
         glfwTerminate();
-        return 0;
+        return wrote ? 0 : 1;
     }
 
     // ------------------------------------------------------------------
@@ -1155,16 +1176,18 @@ int main(int argc, char** argv) {
 
     // --- brushkit style state ----------------------------------------------
     int guiStyle = styleIdx;
-    bool styleAutoScale = std::isnan(opt.styleScale);
+    bool customLookActive = keepFileStyle;
+    bool styleAutoScale = !customLookActive && std::isnan(opt.styleScale);
     // --style-scale-mult (the launcher's brush size) rides on the automatic size.
     auto autoSize = [&]() {
         return styles::autoScale(pipe.width(), pipe.height()) * opt.styleScaleMult;
     };
-    float styleScaleVal = styleAutoScale ? autoSize() : opt.styleScale;
+    float styleScaleVal = std::isnan(opt.styleScale) ? autoSize() : opt.styleScale;
     int styledW = pipe.width(), styledH = pipe.height();
     // Re-derives every parameter block from the chosen style, at the current
     // stroke size, and resyncs the widgets that mirror them.
     auto restyle = [&]() {
+        customLookActive = false;
         const float sc = styleAutoScale ? autoSize() : styleScaleVal;
         if (styleAutoScale) styleScaleVal = sc;
         if (guiStyle > 0) styles::apply(guiStyle, sc, params, cfg, styleP);
@@ -1243,7 +1266,7 @@ int main(int argc, char** argv) {
             player.close();
         }
         // A new input size rescales a style's strokes.
-        if (guiStyle > 0 && styleAutoScale &&
+        if (guiStyle > 0 && styleAutoScale && !customLookActive &&
             (pipe.width() != styledW || pipe.height() != styledH))
             restyle();
 
@@ -1285,7 +1308,7 @@ int main(int argc, char** argv) {
 
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(400, float(fbH)), ImGuiCond_Always);
-        ImGui::Begin("gpu-sbr-brushkit", nullptr,
+        ImGui::Begin("brushkit", nullptr,
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_NoCollapse);
         ImGui::PushItemWidth(-165.0f);   // leave room for the longest label
@@ -1442,6 +1465,7 @@ int main(int argc, char** argv) {
                     snprintf(label, sizeof(label), "%s  -  %s %s", sl[size_t(i)].name,
                              sl[size_t(i)].era, sl[size_t(i)].years);
                     if (ImGui::Selectable(label, i == guiStyle)) {
+                        if (customLookActive) styleAutoScale = true;
                         guiStyle = i;
                         // back to "none": the web preset's look, untouched
                         if (i == 0) applyPreset(kPresets[presetIdx], params, cfg, &radiiText);
@@ -1452,12 +1476,19 @@ int main(int argc, char** argv) {
             }
             ImGui::TextWrapped("%s", sl[size_t(guiStyle)].summary);
             if (guiStyle > 0) {
-                if (ImGui::Checkbox("stroke size follows image", &styleAutoScale)) restyle();
-                if (!styleAutoScale) {
-                    ImGui::SliderFloat("stroke size", &styleScaleVal, 0.3f, 4.f);
-                    if (ImGui::IsItemDeactivatedAfterEdit()) restyle();
+                if (customLookActive) {
+                    ImGui::TextDisabled("Saved look keeps its brush size; reset style to rescale.");
+                } else {
+                    if (ImGui::Checkbox("stroke size follows image", &styleAutoScale)) restyle();
+                    if (!styleAutoScale) {
+                        ImGui::SliderFloat("stroke size", &styleScaleVal, 0.3f, 4.f);
+                        if (ImGui::IsItemDeactivatedAfterEdit()) restyle();
+                    }
                 }
-                if (ImGui::Button("reset style")) restyle();
+                if (ImGui::Button("reset style")) {
+                    styleAutoScale = true;
+                    restyle();
+                }
                 StyleParams& s = styleP;
                 if (ImGui::CollapsingHeader("style: brush")) {
                     ImGui::SliderFloat("width x", &s.widthScale, 0.3f, 2.5f);
@@ -1524,7 +1555,7 @@ int main(int argc, char** argv) {
         // and are not editable; this is how a look found by dragging sliders
         // survives the session, and how it reaches a --video render.
         static const std::vector<filedialog::Filter> kParamFilter = {
-            {"gpu-sbr parameters", "*.sbr"}};
+            {"Brushkit parameters", "*.sbr"}};
         if (ImGui::Button("Save params...")) {
             const std::string p = filedialog::saveFile(
                 "Save parameters", kParamFilter, "look.sbr", "sbr");
@@ -1541,16 +1572,21 @@ int main(int argc, char** argv) {
             if (!p.empty()) {
                 std::string perr, key;
                 bool withStyle = false;
+                TuningParams loadedParams = params;
+                RenderConfig loadedCfg = cfg;
                 StyleParams loaded = styleP;
-                if (!paramfile::load(p, &params, &cfg, &perr, &loaded, &key, &withStyle)) {
+                if (!paramfile::load(p, &loadedParams, &loadedCfg, &perr, &loaded, &key, &withStyle)) {
                     gui.status = perr;
                     gui.statusIsError = true;
                 } else {
-                    // A saved style comes back exactly as it was tuned; a file
-                    // without one leaves the renderer on the original look.
+                    // Commit the whole look only after the file is validated.
+                    params = loadedParams;
+                    cfg = loadedCfg;
                     styleP = withStyle ? loaded : StyleParams{};
                     if (!withStyle) cfg.layerSpecs.clear();
                     guiStyle = withStyle ? std::max(0, styles::indexOf(key)) : 0;
+                    customLookActive = withStyle;
+                    if (withStyle) styleAutoScale = false;
                     pipe.setStyle(styleP);
                     styledW = pipe.width();
                     styledH = pipe.height();
@@ -1724,8 +1760,8 @@ int main(int argc, char** argv) {
         const bool s = glfwGetKey(win, GLFW_KEY_S) == GLFW_PRESS &&
                        !ImGui::GetIO().WantCaptureKeyboard;
         if (s && !sDown) {
-            writePng(opt.out, pipe.readCanvas(), pipe.width(), pipe.height());
-            shaderMsg = "saved " + opt.out;
+            shaderMsg = writePng(opt.out, pipe.readCanvas(), pipe.width(), pipe.height())
+                      ? ("saved " + opt.out) : ("could not save " + opt.out);
         }
         sDown = s;
 
@@ -1767,7 +1803,7 @@ int main(int argc, char** argv) {
                 ImGui::NewFrame();
                 ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
                 ImGui::SetNextWindowSize(ImVec2(400, float(h)), ImGuiCond_Always);
-                ImGui::Begin("gpu-sbr-brushkit", nullptr,
+                ImGui::Begin("brushkit", nullptr,
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                              ImGuiWindowFlags_NoCollapse);
                 ImGui::TextDisabled("EXPORTING");

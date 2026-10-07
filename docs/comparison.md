@@ -1,6 +1,6 @@
-# Verifying gpu-sbr against PainterlyImageCreatorWeb
+# Verifying classic rendering against PainterlyImageCreatorWeb
 
-The point of this renderer is to reproduce `worker.js`'s `paintHertzmann`
+The classic rendering mode aims to reproduce `worker.js`'s `paintHertzmann`
 output, so "looks about right" is not a sufficient test. This is how the two
 are compared and what the numbers currently are.
 
@@ -13,7 +13,7 @@ and `paintify` is called directly. The functions that matter
 that context to count per-layer cells, threshold passes, drawn strokes and mean
 points per stroke, without editing the upstream repo.
 
-gpu-sbr reports the same quantities: `--debug-cells` prints each layer's
+Classic mode reports the same quantities: `--debug-cells` prints each layer's
 cell-error distribution, and the stats buffer carries seeds, drawn strokes and
 total points per (layer, pass).
 
@@ -48,26 +48,26 @@ and is what the noise floor measures, from "the images differ structurally".
 | | raw | blur 4 | blur 12 |
 |---|---|---|---|
 | web vs web (noise floor) | 19.66 | 11.00 | 6.09 |
-| **web vs gpu-sbr** | **19.41** | **10.51** | **5.75** |
-| web vs gpu-sbr, before the y-flip fix | 22.99 | 13.45 | 8.64 |
+| **web vs classic mode** | **19.41** | **10.51** | **5.75** |
+| web vs classic mode, before the y-flip fix | 22.99 | 13.45 | 8.64 |
 
 (Re-measured after stroke identity moved from `Math.random()`-style per-frame
 jitter to a position hash — see the note below. The match is unchanged, and
 sits just inside the noise floor.)
 
 Mean RGB: web run 1 `54.39 49.68 49.63`, web run 2 `53.80 49.11 48.91`,
-gpu-sbr `54.23 49.51 49.32` — the port falls between the two web runs.
+classic mode `54.23 49.51 49.32` — the port falls between the two web runs.
 
 With impasto at the web's Medium (strength 0.3, light 0.3): blur-12 RMS 5.95,
 mean RGB web `52.65 48.15 48.13` against gpu `52.46 47.92 47.88`.
 
-gpu-sbr agrees with the web renderer as closely as the web renderer agrees with
+Classic mode agrees with the web renderer as closely as the web renderer agrees with
 itself. There is no measurable structural difference left at this image size and
 preset.
 
 ## Cost
 
-| Image | Drawn strokes | gpu-sbr | worker.js (1 CPU thread) |
+| Image | Drawn strokes | Classic GPU mode | worker.js (1 CPU thread) |
 |---|---|---|---|
 | 960 x 1280 | 32K | 2.40 ms | 173,000 - 215,000 ms |
 | 1920 x 1080 | 31K | 3.74 ms | — |
@@ -81,7 +81,7 @@ does with workers.
 
 `worker.js` draws a stroke's colour jitter, brush-tile variant and angle jitter
 from `Math.random()`, so they are re-rolled for every stroke on every frame.
-gpu-sbr hashes them from the stroke's **position** instead. On a single still
+Classic mode hashes them from the stroke's **position** instead. On a single still
 this is simply a different random stream and the statistics above are unaffected
 — the mean RGB still lands between the two web runs. On video it is the
 difference between paint that boils and paint that sits still: repainting every
@@ -143,16 +143,14 @@ both invisible in the output image. See `docs/relaxation.md`.
 
 ## Reproducing
 
-The harness lives outside this repo (it reads `worker.js` from a sibling
-checkout). It needs Node and, for the image encode/decode and the metrics,
-Python with Pillow, NumPy and SciPy. The shape of it:
+The historical tables above used a reference image that is not distributed with this repository. To make a new comparison, run both renderers on `launcher/sample.jpg`; the resulting numbers will differ. The harness lives outside this repo (it reads `worker.js` from a sibling checkout). It needs Node and, for image encode/decode and metrics, Python with Pillow, NumPy and SciPy. The shape of it:
 
 ```sh
 # raw RGBA in, raw RGBA out, PIL on either side
-python -c "from PIL import Image; im=Image.open('assets/test.jpg').convert('RGBA'); \
+python -c "from PIL import Image; im=Image.open('launcher/sample.jpg').convert('RGBA'); \
            open('src.bin','wb').write(im.tobytes())"
 node web_render.mjs impressionist 0 0 0.45      # ~3 minutes
-build\gpu-sbr.exe --headless --in assets\test.jpg --out gpu.png \
+build\brushkit.exe --headless --in launcher\sample.jpg --out gpu.png \
                   --preset impressionist --passes 8
 ```
 
@@ -171,7 +169,7 @@ stroke has one point — which `renderStrokeSolid` declines to draw. The web's o
 Verified directly: 200/200 strokes come back with a single point at curvature 0,
 0/200 at 0.25 and above.
 
-gpu-sbr seeds `lastDir` from the gradient on the first step instead. That is
+Brushkit seeds `lastDir` from the gradient on the first step instead. That is
 bit-identical for every curvature above 0 — the blend reduces to the gradient
 direction either way — and turns curvature 0 into the straight dabs the preset
 is asking for.
