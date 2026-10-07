@@ -1,6 +1,7 @@
 #pragma once
 #include "gl_util.h"
 #include "params.h"
+#include "style.h"
 
 #include <string>
 #include <utility>
@@ -50,6 +51,14 @@ public:
 
     // Uploads an RGBA8 image and (re)sizes every render target to match.
     bool setSource(const unsigned char* rgba, int w, int h);
+
+    // GPU-only input path for live Spout frames. The texture must be RGBA8.
+    bool setSourceTexture(GLuint texture, int w, int h);
+
+    // The brushkit style. Persists across renders; `enabled == 0` (the
+    // default) is the original gpu-sbr pipeline, stage for stage.
+    void setStyle(const StyleParams& s) { m_style = s; }
+    const StyleParams& style() const { return m_style; }
 
     // (Re)generates the brush tiles for a set of radii. Called whenever the
     // radii or bristle density change; costs well under a millisecond.
@@ -120,6 +129,9 @@ public:
     int width() const { return m_w; }
     int height() const { return m_h; }
     GLuint canvasTexture() const { return m_canvasTex; }
+    // What to show / save / send: the finished image when a style's finish and
+    // post chain ran, otherwise the canvas itself (the original behaviour).
+    GLuint outputTexture() const { return m_outputIsFinal ? m_finalTex : m_canvasTex; }
 
     // --- telemetry ---
     // Stages 2-5 run once per (layer, chunk), so each figure is the whole
@@ -133,9 +145,10 @@ public:
     double msRelax()     const { return m_ms.relax; }
     double msEtf()       const { return m_ms.etf; }
     double msFlow()      const { return m_ms.flow; }
+    double msStyle()     const { return m_ms.style; }
     double msTotal()     const { return msReference() + msError() + msSeeds()
                                       + msTrace() + msRaster() + msImpasto()
-                                      + msRelax() + msEtf() + msFlow(); }
+                                      + msRelax() + msEtf() + msFlow() + msStyle(); }
     uint32_t lastStrokeCount() const { return m_lastStrokes; }      // seeds
     uint32_t lastDrawnCount() const { return m_lastDrawn; }         // drew something
     double   lastMeanPoints() const {
@@ -173,10 +186,36 @@ private:
     // Leaves m_flowValid false (and the field untouched) when off.
     void computeFlow(const TuningParams& p, const RenderConfig& cfg);
 
+    // --- brushkit style stages -------------------------------------------
+    bool styleOn() const { return m_style.enabled > 0.5f; }
+    void uploadStyle(float time);
+    // Support tooth map; rebuilt only when the support, its scale or the
+    // image size change.
+    void buildSupport();
+    // Rewrites m_gradTex with the style's orientation field (fields.py).
+    void applyStyleField();
+    // Ground for the style: toned ground + lay-in, flat print, or paper.
+    void layStyleGround(TuningParams& p, const std::vector<float>& radii);
+    // Smear / wash -> finish -> overlays, into m_finalTex.
+    void runPost();
+    // autoVortex: re-centre Turner's vortex on the frame's brightest region.
+    void trackVortex(bool smooth);
+    float m_vortexEma[2] = {-1.f, -1.f};
+
     int m_w = 0, m_h = 0;
 
     glu::Program m_blur, m_features, m_error, m_seeds, m_trace, m_stroke,
                  m_impasto, m_canvasProg, m_pool, m_relax, m_energy, m_etf, m_flow;
+    glu::Program m_support, m_styleField, m_finish, m_post, m_flat;
+
+    StyleParams m_style;
+    GLuint m_styleUbo = 0;
+    GLuint m_toothTex = 0, m_finalTex = 0, m_postTmpTex = 0, m_snapTex = 0, m_flatTex = 0;
+    GLuint m_finalFbo = 0;
+    float m_toothKey[4] = {-1.f, -1.f, -1.f, -1.f};
+    bool m_outputIsFinal = false;
+    bool m_flatValid = false;
+    glu::GpuTimer m_tStyle;
 
     GLuint m_srcTex = 0, m_refTex = 0, m_tmpTex = 0, m_tensorTex = 0;
     GLuint m_gradTex = 0, m_errTex = 0, m_diffTex = 0;
@@ -230,7 +269,7 @@ private:
     // end() gives the frame total shifted by one measurement -- which settles
     // immediately and never stalls for a result.
     struct StageTimes { double ref, error, seeds, trace, raster, impasto,
-                        relax, etf, flow; };
+                        relax, etf, flow, style; };
     StageTimes m_ms{};
     void endStage(glu::GpuTimer& t, double& acc) { t.end(); acc += t.lastMs; }
     uint32_t m_lastStrokes = 0, m_lastDrawn = 0, m_lastPoints = 0;

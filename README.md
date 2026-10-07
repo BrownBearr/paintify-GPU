@@ -1,4 +1,80 @@
-# gpu-sbr
+# gpu-sbr-brushkit
+
+## The easy way: double-click `Brushkit.bat`
+
+It opens the **Brushkit launcher**, a window that walks you through four steps:
+
+1. **What to paint.** Open an image or a video, or switch to *Live (TouchDesigner)*. You can also drop a file onto `Brushkit.bat`.
+2. **Pick a style.** Every card shows *your* picture in that style, with its era and painter underneath.
+3. **Preview.** The large preview updates the moment you click a card. Hold **Compare** to see the original, and use **Brush size** to make the strokes bigger or smaller.
+4. **Save or play:**
+   - **Save painting** writes a full-size PNG or JPG.
+   - **Export painted video** writes an MP4, with a progress bar and the original sound.
+   - **Play it painted** paints the clip in realtime in a window.
+   - **Fine-tune in the editor** opens every slider.
+   - **Start live** paints a TouchDesigner feed in realtime.
+
+It needs Python 3 with Pillow (`python -m pip install pillow`), and ffmpeg on `PATH` for videos. If the renderer has not been built yet, the launcher offers a **Build** button. See *The launcher* in `system_architecture.md` for how it works.
+
+## What this repository is
+
+This repository duplicates **gpu-sbr** and adds **brushkit's painting styles on the GPU**. brushkit is the pure-code painting engine in `C:\Cursor Projects\brushkit`.
+The original `C:\Users\I3row\gpu-sbr` is untouched. With `--style none` (the default) this renderer is gpu-sbr stage for stage: on `assets/test.jpg` it draws 32,085 strokes against the original's 32,036, the ~0.3% atomics noise gpu-sbr already documents.
+
+Adding `--style <name>` changes each stage as follows:
+
+| Stage | Change from gpu-sbr | Ported from |
+|---|---|---|
+| Brush | Procedural brushkit brush evaluated per fragment on the stroke ribbon. It covers the bristle comb, load and dry-out, tooth-gated dry brush, flat/filbert/round/knife caps with a jagged end, ragged edges, combed grooves, wet pickup and smear, and height with an edge ridge, a start blob and `flatten` | `brushkit/stroke.py` |
+| Direction | Style fields written into the flow `trace.comp` already follows: Cezanne patches, Turner vortex (auto-centred on the light), Van Gogh curl, Munch waves, fallback hand angle, fBm wobble | `brushkit/fields.py` |
+| Colour | Palette pull, Lab broken colour, warm/cool, tenebrism, fauve remap, Seurat optical mixing, ink tones, value gate | `brushkit/color.py` + style recipes |
+| Layers | Each Hertzmann layer plays one brushkit pass (lay-in veils, dry brush, lead-white lights only, details), with per-layer brush roles | `brushkit/styles/*.py` |
+| Ground | Canvas / linen / coarse / panel / paper / washi tooth, a toned ground with a thin lay-in, and flat print fills (Kuwahara + palette) | `surface.py`, `source.py` |
+| Finish | Relief relighting with specular, varnish, craquelure, vignette, static grain. Written to a separate output image, so video never re-lights the carried canvas | `Canvas.finish` |
+| Effects | Wet smear (LIC), contour drawing, key lines, Ben-Day dots, pool caustics, bokashi, animated rain, cubist facets, watercolour washes, border | `effects.py`, `media.py` |
+
+## 23 styles
+
+Run `build\gpu-sbr-brushkit.exe --list-styles` to list them:
+`tempera sfumato chiaroscuro dutch rococo turner ukiyoe sumie watercolor monet seurat cezanne vangogh fauve expressionist cubism gestural pop hockney folk knife alla_prima pastel`
+
+Measured on the RTX 3060 Ti with scenes about 1000 px on the long side: **1.6–20 ms per frame**. The flat print styles take under 1 ms. The Python originals take 5–70 s per image.
+
+## Use it
+
+```sh
+tools\build.bat                                                   # build (MSVC + vcpkg)
+build\gpu-sbr-brushkit.exe --style turner                         # GUI: style menu + style sliders
+build\gpu-sbr-brushkit.exe --headless --in photo.jpg --style cezanne --out painted.png
+build\gpu-sbr-brushkit.exe --video clip.mp4 --out painted.mp4 --style vangogh --temporal-diff 12 --flow 4
+build\gpu-sbr-brushkit.exe --in clip.mp4 --style monet --play     # paint the clip live in the window
+build\gpu-sbr-brushkit.exe --live-spout --style ukiyoe            # TouchDesigner / Spout, realtime
+```
+
+- **`--style-scale <f>`** sets the stroke size. By default it follows the image: 1.0 at a 1000 px long side, 1.92 at 1080p. Every other flag still overrides the style, for example `--style cezanne --threshold 18`.
+- **GUI.** The *BRUSHKIT STYLE* combo sits at the top of the panel, with collapsible brush, field and colour, and surface and effects sliders below it. **Save params** writes the whole tuned style, including the style block, into the `.sbr` file, and `--params look.sbr` reproduces it exactly in a video or live render.
+- **Realtime video in the GUI.** Open a video, then press **Play (paint in realtime)**, or pass `--in clip.mp4 --play`. It paints every frame as it plays and turns on temporal coherence and optical flow. At 1280×720 with Turner it holds the clip's 30 fps at 4–9 ms of GPU per frame.
+- **Video export** at 1280×720, measured end to end including ffmpeg:
+
+  | Style | Throughput | GPU per frame |
+  |---|---|---|
+  | Turner | 45 fps | 5.8 ms |
+  | Cezanne | 56 fps | 4.3 ms |
+  | Van Gogh | 99 fps | 2.7 ms |
+  | Ukiyo-e | 161 fps | 0.5 ms |
+
+- **TouchDesigner.** Build, then run `touchdesigner/install_brushkit.py` in TouchDesigner's Textport. It creates `Brushkit.tox`: one TOP in, one TOP out, with a *Painting style* menu. See [touchdesigner/README.md](touchdesigner/README.md). The Spout round trip TouchDesigner uses is tested by `build\brushkit-spout-smoke.exe --live --style <name>`. It runs at 26–30 painted fps at 1280×720 against a 30 fps target.
+
+### Video stability additions
+
+These are on only when a style is on:
+
+- **Exposed borders.** Content entering the frame on a pan gets a fresh lay-in and is marked changed. Before this, the flow advection clamped at the edge and smeared the border column into flat blobs.
+- **`temporalRefresh`** (default 5% of cells per frame) repaints unchanged cells on a hash-scattered schedule. Strokes are position-seeded, so a refreshed cell repaints the same mark. This renews paint before Catmull-Rom resampling can soften it, without flickering.
+
+---
+
+# gpu-sbr (the renderer this duplicates)
 
 A GPU port of [PainterlyImageCreatorWeb](https://github.com/BrownBearr/PainterlyImageCreatorWeb)'s
 Hertzmann renderer. The goal is the web version's output, not a new look: the

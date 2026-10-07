@@ -2,6 +2,7 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 #include "common.glsl"
+#include "style.glsl"
 
 // One invocation per seed-grid cell, mirroring worker.js's `cells` loop.
 // A cell earns a stroke only when its mean Lab error exceeds the threshold --
@@ -51,7 +52,26 @@ void main() {
 
     // Temporal coherence: a cell whose source barely moved keeps last frame's
     // paint. This is worker.js's frameDiffThreshold rule.
-    if (uTemporal != 0 && c.maxDiff < FRAME_DIFF) return;
+    if (uTemporal != 0 && c.maxDiff < FRAME_DIFF) {
+        // brushkit: a slow, hash-scattered refresh of unchanged cells, so paint
+        // carried along the flow is renewed before resampling can soften it.
+        // Strokes are position-seeded, so a refreshed cell repaints the same
+        // mark rather than a new one -- it renews without flickering.
+        bool refresh = styleOn() && ST_REFRESH > 0.0 &&
+            hash01(cellIdx * 2654435761u ^ uint(FRAME) * 0x9e3779b9u ^ (layer + 7u) * 0x85ebca6bu) < ST_REFRESH;
+        if (!refresh) return;
+    }
+
+    // brushkit value gate: ink styles leave the light half of the motif as
+    // bare paper, so no stroke is placed there at all -- not even on the
+    // coarsest layer, which otherwise always paints.
+    if (styleOn()) {
+        float l = luma(texelFetch(uRef, sp, 0).rgb);
+        if (ST_VALUE_GATE < 1.0 && l > ST_VALUE_GATE) return;
+        // A layer can be reserved for the lights (Turner's lead white,
+        // Rembrandt's loaded highlights, Vermeer's pointille).
+        if (l < layerA().w) return;
+    }
 
     uint budget = min(uint(SEED_BUDGET), uint(seeds.length()));
     uint idx = atomicAdd(seedCount, 1u);
@@ -72,6 +92,14 @@ void main() {
         hsv.y = clamp(hsv.y + (hash01(seedHash ^ 0xb2u) * 2.0 - 1.0) * JITTER_SAT, 0.0, 1.0);
         hsv.z = clamp(hsv.z + (hash01(seedHash ^ 0xc3u) * 2.0 - 1.0) * JITTER_VAL, 0.0, 1.0);
         col = hsv2rgb(hsv);
+    }
+    // brushkit colour logic: palette, broken colour, temperature, value remaps.
+    // Seeded from the stroke's position like everything else, so it is stable
+    // from frame to frame.
+    if (styleOn()) {
+        col = styleColor(col, seedHash ^ 0x51edu, true);
+        float vm = layerB().y;     // e.g. darker tempera hatches, whiter lead white
+        col = (vm > 1.0) ? mix(col, vec3(1.0), clamp(vm - 1.0, 0.0, 1.0)) : col * vm;
     }
 
     // Brush tile variant, hashed from the seed position exactly as

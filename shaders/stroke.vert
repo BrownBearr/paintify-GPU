@@ -1,6 +1,7 @@
 #version 460 core
 
 #include "common.glsl"
+#include "style.glsl"
 
 layout(std430, binding = 2) restrict readonly buffer VertexBuf { PackedVertex verts[]; };
 layout(std430, binding = 4) restrict readonly buffer HeaderBuf { StrokeHeader headers[]; };
@@ -13,6 +14,10 @@ flat out float vRadius;
 flat out float vTotalLen;
 flat out float vOpacity;
 flat out uint  vTexHash;
+// brushkit brush model only: the half-width varies smoothly along the stroke
+// (taper, swell) and the fragment needs the local direction for the smear.
+out float vHw;
+out vec2  vTang;
 
 // One triangle-strip *instance* per stroke -- not one per segment. The old
 // renderer drew each segment as its own quad, so every join blended twice and
@@ -38,6 +43,18 @@ float taperAt(float u, float amt) {
     return (1.0 - 0.45 * amt) + 0.45 * amt * s;
 }
 
+// brushkit stroke.py `_profile`: swell in over taperStart, lift off over
+// taperEnd, never thinner than tipMin, optional pressure belly.
+float bkProfile(float u) {
+    float p = 1.0;
+    if (ST_TAPER_START > 0.0)
+        p = min(p, ST_TIP_MIN + (1.0 - ST_TIP_MIN) * smoothstep(0.0, ST_TAPER_START, u));
+    if (ST_TAPER_END > 0.0)
+        p = min(p, ST_TIP_MIN + (1.0 - ST_TIP_MIN) * smoothstep(0.0, ST_TAPER_END, 1.0 - u));
+    if (ST_SWELL != 0.0) p *= 1.0 + ST_SWELL * sin(3.14159265 * u);
+    return p;
+}
+
 void main() {
     uint stroke = uint(gl_InstanceID);
     StrokeHeader h = headers[stroke];
@@ -47,6 +64,7 @@ void main() {
         gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
         vColor = vec3(0.0); vNorm = 0.0; vArcPx = 0.0;
         vREff = 0.0; vRadius = 0.0; vTotalLen = 1.0; vOpacity = 0.0; vTexHash = 0u;
+        vHw = 0.0; vTang = vec2(1.0, 0.0);
         return;
     }
 
@@ -67,8 +85,22 @@ void main() {
     vec2 nrm = vec2(-tang.y, tang.x);
 
     float u = arc / max(h.totalLen, 1e-6);
-    float taper = (TEX_STRENGTH > 0.0) ? taperAt(u, clamp(TEX_TAPER, 0.0, 1.0)) : 1.0;
-    float rEff = radius * taper;
+    float rEff, ext, capPush;
+    if (brushkitBrush()) {
+        // The ribbon is widened past the nominal edge so ragged edges, soft
+        // edges and a flat brush's uneven bristle ends have geometry to live
+        // in; vNorm is rescaled so |vNorm| == 1 is still the nominal edge.
+        float wScale = ST_WIDTH_SCALE * layerB().x;
+        rEff = max(radius * wScale * bkProfile(u), 0.3);
+        float rMax = radius * wScale;
+        ext = 1.0 + ST_EDGE_ROUGH + (ST_EDGE_SOFT + 1.5) / max(rEff, 0.5);
+        capPush = rMax * (max(ST_CAP_FRAC, 1.0) + ST_END_JAG + ST_EDGE_ROUGH) + ST_EDGE_SOFT + 1.5;
+    } else {
+        float taper = (TEX_STRENGTH > 0.0) ? taperAt(u, clamp(TEX_TAPER, 0.0, 1.0)) : 1.0;
+        rEff = radius * taper;
+        ext = 1.0;
+        capPush = rEff;
+    }
 
     // Miter: lengthen the bisector so the two ribbon edges actually meet at a
     // bend. Clamped, or a hairpin turn would throw a spike across the canvas.
@@ -78,14 +110,14 @@ void main() {
         miter = clamp(1.0 / max(abs(dot(nrm, nIn)), 0.25), 1.0, 4.0);
     }
 
-    // Push the two outermost points out by a radius so the round caps have
-    // geometry to live in; vArcPx then runs negative (or past totalLen) there
-    // and the fragment shader turns that overshoot into the cap's curvature.
+    // Push the two outermost points out so the caps have geometry to live in;
+    // vArcPx then runs negative (or past totalLen) there and the fragment
+    // shader turns that overshoot into the cap's shape.
     float cap = 0.0;
-    if (i == 0u)          cap = -rEff;
-    else if (i + 1u == vc) cap =  rEff;
+    if (i == 0u)          cap = -capPush;
+    else if (i + 1u == vc) cap =  capPush;
 
-    vec2 pos = p + nrm * (rEff * miter * side) + tang * cap;
+    vec2 pos = p + nrm * (rEff * ext * miter * side) + tang * cap;
 
     // No y flip. Window y == 0 is the framebuffer's bottom row, which is
     // texel row 0 of the attached canvas texture, so negating y here would
@@ -98,10 +130,12 @@ void main() {
     vec4 col = unpackUnorm4x8(h.color);
     vColor    = col.rgb;
     vOpacity  = col.a;
-    vNorm     = side;
+    vNorm     = side * ext;
     vArcPx    = arc + cap;
     vREff     = rEff;
     vRadius   = radius;
     vTotalLen = h.totalLen;
     vTexHash  = h.layerTex >> 16;
+    vHw       = rEff;
+    vTang     = tang;
 }

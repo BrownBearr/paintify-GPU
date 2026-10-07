@@ -9,3 +9,7 @@ docs/*.png
 implementation_plan.md
 task.md
 imgui.ini
+build.log
+Brushkit.tox
+docs/brushkit/*.mp4
+__pycache__/

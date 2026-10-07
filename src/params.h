@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -91,6 +92,14 @@ static_assert(sizeof(TuningParams) % 16 == 0, "Params must stay vec4-aligned");
 // Host-side settings that are not part of the uniform block.
 enum class Underpaint { Blur, None, Average };
 
+// brushkit: one Hertzmann layer plays one brushkit "pass" (a lay-in, a body of
+// dry brush, lead-white lights, details...), so a style may override the core
+// stroke knobs per layer. NaN leaves the global value in force.
+struct LayerSpec {
+    float maxLen = NAN, minLen = NAN, threshold = NAN;
+    float curvature = NAN, opacity = NAN, gridFactor = NAN;
+};
+
 struct RenderConfig {
     // Brush radii, coarse to fine. Web default is "8, 4, 2".
     std::vector<float> radii{8.f, 4.f, 2.f};
@@ -123,8 +132,18 @@ struct RenderConfig {
     int flowLevels = 0;
     // LK refinements per pyramid level. Three is where it stops moving.
     int flowIterations = 3;
+    // Anti-smear, 0..1. The flow advects the *image* of the painting, so paint
+    // that survives several frames gets bent and stretched with the motion
+    // and reads as liquid rather than painted. Above 0, any pixel moving
+    // faster than a limit (6 px/frame near 0, a quarter pixel at 1) drops its
+    // carried paint for a fresh lay-in and is repainted with new strokes, so
+    // moving parts are painted per frame while still parts stay stable. With
+    // flow off it tightens the source-change test instead.
+    float freshPaint = 0.f;
     // Hash-scattered subsets per relaxation iteration. Only useful now as a
     // way to stagger the work: the kernel scores against the source and the
     // frame's ground, so concurrent strokes no longer interfere and 1 is fine.
     int relaxSubPasses = 1;
+    // brushkit per-layer overrides, coarse to fine. Empty = none.
+    std::vector<LayerSpec> layerSpecs;
 };

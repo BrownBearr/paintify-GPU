@@ -85,7 +85,7 @@ std::string radiiToString(const std::vector<float>& r) {
 }
 
 bool save(const std::string& path, const TuningParams& p, const RenderConfig& cfg,
-          std::string* err) {
+          std::string* err, const StyleParams* st, const std::string& styleKey) {
     std::ofstream f(path);
     if (!f) {
         if (err) *err = "could not write " + path;
@@ -102,10 +102,27 @@ bool save(const std::string& path, const TuningParams& p, const RenderConfig& cf
     f << "relax-subpasses " << cfg.relaxSubPasses << "\n";
     f << "etf-iterations " << cfg.etfIterations << "\n";
     f << "flow-levels " << cfg.flowLevels << "\n";
-    f << "flow-iterations " << cfg.flowIterations << "\n\n";
+    f << "flow-iterations " << cfg.flowIterations << "\n";
+    f << "fresh-paint " << cfg.freshPaint << "\n\n";
 
     for (const Field& fl : kFields)
         f << fl.key << ' ' << (p.*fl.member) << '\n';
+
+    if (st && st->enabled > 0.5f) {
+        f << "\n# brushkit style\n";
+        if (!styleKey.empty()) f << "style " << styleKey << "\n";
+        for (size_t i = 0; i < cfg.layerSpecs.size(); ++i) {
+            const LayerSpec& l = cfg.layerSpecs[i];
+            f << "layer " << i << ' ' << l.maxLen << ' ' << l.minLen << ' ' << l.threshold << ' '
+              << l.curvature << ' ' << l.opacity << ' ' << l.gridFactor << '\n';
+        }
+        // The whole block, in layout order: every knob of the brush, field,
+        // colour, ground and finish, including anything tweaked in the GUI.
+        const float* v = reinterpret_cast<const float*>(st);
+        f << "style-block";
+        for (size_t i = 0; i < sizeof(StyleParams) / sizeof(float); ++i) f << ' ' << v[i];
+        f << '\n';
+    }
 
     if (!f) {
         if (err) *err = "write failed on " + path;
@@ -115,12 +132,14 @@ bool save(const std::string& path, const TuningParams& p, const RenderConfig& cf
 }
 
 bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
-          std::string* err) {
+          std::string* err, StyleParams* st, std::string* styleKey, bool* haveStyle) {
     std::ifstream f(path);
     if (!f) {
         if (err) *err = "could not read " + path;
         return false;
     }
+    if (haveStyle) *haveStyle = false;
+    bool clearedLayers = false;
 
     int unknown = 0;
     std::string line;
@@ -140,11 +159,40 @@ bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
             if (cfg) cfg->radii = parseRadii(rest);
             continue;
         }
+        if (key == "style-block") {
+            std::vector<float> vals;
+            std::string tok;
+            while (ls >> tok) vals.push_back(std::strtof(tok.c_str(), nullptr));
+            if (st && vals.size() == sizeof(StyleParams) / sizeof(float)) {
+                std::memcpy(st, vals.data(), sizeof(StyleParams));
+                if (haveStyle) *haveStyle = true;
+            } else if (st) {
+                ++unknown;   // written by a build with a different style layout
+            }
+            continue;
+        }
+        if (key == "layer") {
+            int idx = -1;
+            std::string t[6];
+            if (!(ls >> idx >> t[0] >> t[1] >> t[2] >> t[3] >> t[4] >> t[5]) || idx < 0 || idx >= 8) continue;
+            if (cfg) {
+                if (!clearedLayers) { cfg->layerSpecs.clear(); clearedLayers = true; }
+                if (cfg->layerSpecs.size() <= size_t(idx)) cfg->layerSpecs.resize(size_t(idx) + 1);
+                LayerSpec& l = cfg->layerSpecs[size_t(idx)];
+                float* dst[6] = {&l.maxLen, &l.minLen, &l.threshold, &l.curvature, &l.opacity, &l.gridFactor};
+                for (int k = 0; k < 6; ++k) *dst[k] = std::strtof(t[k].c_str(), nullptr);
+            }
+            continue;
+        }
 
         std::string value;
         if (!(ls >> value)) continue;
 
         if (key == "version") continue;
+        if (key == "style") {
+            if (styleKey) *styleKey = value;
+            continue;
+        }
         if (key == "underpaint") {
             if (cfg) cfg->underpaint = (value == "none")    ? Underpaint::None
                                      : (value == "average") ? Underpaint::Average
@@ -173,6 +221,10 @@ bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
         }
         if (key == "flow-levels") {
             if (cfg) cfg->flowLevels = std::max(0, atoi(value.c_str()));
+            continue;
+        }
+        if (key == "fresh-paint") {
+            if (cfg) cfg->freshPaint = std::clamp(std::strtof(value.c_str(), nullptr), 0.f, 1.f);
             continue;
         }
         if (key == "flow-iterations") {

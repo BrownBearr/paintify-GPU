@@ -1,5 +1,6 @@
 #pragma once
 #include "params.h"
+#include "style.h"
 
 #include <string>
 #include <vector>
@@ -21,14 +22,20 @@ namespace paramfile {
 std::vector<float> parseRadii(const std::string& s);
 std::string radiiToString(const std::vector<float>& r);
 
+// With a brushkit style, the file also carries the style's name, its per-layer
+// overrides and the whole style block, so a look tweaked in the GUI reproduces
+// exactly in a --video or live render.
 bool save(const std::string& path, const TuningParams& p, const RenderConfig& cfg,
-          std::string* err);
+          std::string* err, const StyleParams* st = nullptr,
+          const std::string& styleKey = std::string());
 
 // Values absent from the file keep whatever the caller already had, so a file
 // is a patch rather than a full reset. Unknown keys are counted and reported
 // in `err` but are not fatal: a file written by a later build should still
-// load whatever this build understands.
+// load whatever this build understands. `*haveStyle` is set when the file
+// carried a style block (then `*st` holds it).
 bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
-          std::string* err);
+          std::string* err, StyleParams* st = nullptr, std::string* styleKey = nullptr,
+          bool* haveStyle = nullptr);
 
 } // namespace paramfile

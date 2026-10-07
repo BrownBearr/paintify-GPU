@@ -435,3 +435,113 @@ Lucas-Kanade advection *on top of* that rule rather than replacing it: the
 carried canvas is warped along the motion first, so the threshold test asks
 whether the subject changed rather than whether the pixel did. At `--flow 0` the
 behaviour is the web's, unchanged.
+
+---
+
+# The brushkit layer (gpu-sbr-brushkit)
+
+This repository duplicates gpu-sbr. Everything above still describes the core.
+This section records what the style system adds and the rules that keep it verifiable.
+
+## The one invariant
+
+`StyleParams::enabled == 0` must leave every stage on its original path.
+- The style UBO (binding 1) is always bound, and every shader tests `styleOn()` or `brushkitBrush()` before doing anything new.
+- The `stroke.frag` height output changed from `float` to `vec4`. The web model writes `.a = 0` and still blends `ONE, ONE`, so it is identical.
+
+Check it with `--style none` on `assets/test.jpg`: the drawn-stroke count must stay within ~0.3% of gpu-sbr's (32,085 vs 32,036 when this was written).
+
+## Data added to the frame
+
+```
+StyleParams UBO (binding 1)   33 vec4 knobs + 16 palette colours + 8 layerA + 8 layerB rows
+m_toothTex   R16F     support micro-relief (support.comp), rebuilt only on support/scale/size change
+m_snapTex    RGBA16F  canvas copied at the start of each layer, read by the brush for pickup/smear
+m_flatTex    RGBA16F  Kuwahara colour (+ region label in .a) for print / watercolour styles
+m_postTmpTex RGBA16F  smear or wash intermediate
+m_finalTex   RGBA16F  the OUTPUT image: finish + effects. readCanvas / blit / Spout send use
+                      outputTexture(), which is m_finalTex when a style ran, else the canvas
+```
+
+`m_finalTex` exists so that relighting, varnish, cracks, rain and outlines are never written into `m_canvasTex`.
+The canvas is the painting's state. `error.comp`, `trace.comp` and the next video frame all read it, so aging it in place would compound on every frame.
+
+## Stage by stage
+
+| Where | brushkit addition |
+|---|---|
+| `render()` start | `uploadStyle(frame)`. `trackVortex()` when `autoVortex` is set (reads a ~16 px mip, eased over time on video). `buildSupport()` |
+| underpaint | `layStyleGround()`: canvas pass 4 (toned ground + thin lay-in), `flat.comp` (Kuwahara → palette/posterize), or bare paper + Kuwahara for the watercolour wash |
+| per layer | Host restores the global knobs, then applies `cfg.layerSpecs[l]`. After Sobel/ST/ETF, `stylefield.comp` rewrites `m_gradTex` (it ping-pongs through `m_etfTex`, because patch mode samples other pixels) |
+| seeds | `styleColor()`, the value gate, the per-layer darkest-value gate, and the per-layer value multiplier |
+| raster | The brushkit model in `stroke.frag`. Height is blended with `ONE, ONE_MINUS_SRC_ALPHA` so `.a = flatten * coverage` levels old relief. Units 7/8 are tooth and snapshot |
+| after relax | Legacy `impasto.comp` is skipped when the style has its own finish. `runPost()`: smear or wash → `finish.comp` → `post.comp` overlays |
+| temporal | Exposed borders (flow-warped UV outside the frame) get a fresh lay-in and diff = 255. `temporalRefresh` repaints a hash-scattered fraction of unchanged cells each frame |
+
+## Per-layer roles
+
+brushkit paints a style in several passes with different brushes. Here each Hertzmann layer is one pass.
+
+- **Host side** (`RenderConfig::layerSpecs`): maxLen, minLen, threshold, curvature, opacity, gridFactor. NaN means keep the global value.
+- **Shader side** (`bkLayerA/B[CUR_LAYER]`): impasto ×, dry-out +, edge softness ×, darkest value painted (so a lights-only layer is possible), width ×, colour value ×, field rotation (pastel cross-hatching), dry tooth +.
+
+`relax` repaints the whole pool with `CUR_LAYER` at the last layer, so per-layer roles only approximately survive relaxation. The styles do not use relax.
+
+## Things that are easy to break
+
+- `StyleParams` and `style.glsl` must match field for field. `static_assert(sizeof(StyleParams) == 65 * 16)` guards the size, not the order. Add fields only in groups of four at the end of the `bk[]` block, and bump the array size in `style.glsl`.
+- `.sbr` files store the style block as raw floats in layout order. A layout change makes old files report an unrecognised `style-block` rather than load a scrambled style.
+- Every style length is multiplied by `scale` in `styles.cpp`. A new pixel-valued knob must be scaled there too, or it will look right at 1000 px and wrong at 4K.
+- `post.comp` binds `uSrc` on unit 4, which is also the brush array's unit. The raster pass rebinds the brush before every draw, so keep that rebind.
+
+## Verification
+
+```
+build\gpu-sbr-brushkit.exe --headless --in assets\test.jpg --out a.png            # regression vs gpu-sbr
+build\gpu-sbr-brushkit.exe --headless --in <scene> --style <name> --out b.png    # each style
+build\gpu-sbr-brushkit.exe --video in.mp4 --out o.mp4 --style turner --temporal-diff 12 --flow 4
+build\gpu-sbr-brushkit.exe --in in.mp4 --style turner --play                     # GUI realtime, logs fps
+build\brushkit-spout-smoke.exe --live --style turner                             # TouchDesigner path
+```
+
+# The launcher (`launcher/brushkit_launcher.py`, `Brushkit.bat`)
+
+A Tkinter + Pillow front end. It never paints anything itself; it drives the renderer in four ways:
+
+| Launcher action | Renderer process |
+|---|---|
+| Previews, gallery thumbnails, **Save painting** | One long-lived `gpu-sbr-brushkit --serve` |
+| **Export painted video** | `--video in --out out.mp4 <look> --temporal-diff 12 --flow 4` (steady) or `--temporal-diff 0` |
+| **Fine-tune in the editor** / **Play it painted** | The ImGui window: `--in <file> <look> [--play]` |
+| **Start live** | `--live-spout <look> --live-parent-pid <launcher> --live-stop-file <cache>\live.stop` |
+
+`<look>` is either `--style <key> --style-scale-mult <brush size>` or `--params <saved .sbr>`.
+
+## `--serve` (main.cpp)
+- The renderer prints `style<TAB>key<TAB>name<TAB>era<TAB>years<TAB>artists<TAB>summary` lines, then starts GL and prints `ready<TAB><gpu>`.
+- It reads one request per stdin line: `render<TAB>in<TAB>out<TAB>style<TAB>size-mult<TAB>params`. It answers `ok<TAB>out<TAB>w<TAB>h<TAB>ms` or `err<TAB>why`, and flushes after each answer.
+- Each request rebuilds the parameters from scratch: defaults, then preset 0, then the params file, then the style at `autoScale(w, h) * mult`, then the command-line overrides. This is the same order a fresh CLI run uses, so a served still matches `--headless` (mean difference 0.7/255, which is only the frame seed).
+- The output format follows the extension: `.bmp` is fast for previews, and `.png` and `.jpg` are used for saved files. PNG compression cost ~140 ms per 1000 px preview, more than the painting itself.
+- It exits when stdin closes, so a crashed or killed launcher never leaves it running.
+- Timing: start-up 1–4 s, a 1000 px preview 30–70 ms, and all 23 gallery thumbnails at 360 px in about 0.2 s.
+
+## `--style-scale-mult`
+It multiplies the automatic stroke size in every mode: CLI, editor (`autoSize()`), live (`onResize`) and serve. The launcher's *Brush size* slider needs it because the video and live resolutions are not known when the command is built.
+
+## Launcher internals
+- **One `Renderer` thread** owns the serve process. It works through a job queue in priority order: stills first, then the newest preview only (older preview requests are dropped), then thumbnails. It restarts the process if it dies. Results come back as PIL images through an event queue that the Tk thread polls every 40 ms. Tk is only touched on its own thread.
+- **Sources are prepared off-thread:**
+  - Images get EXIF rotation applied.
+  - Videos are probed with `ffprobe`, and one frame at the preview-frame slider time is extracted with `ffmpeg`.
+  - The prepared frame is saved at 1000 px (preview) and 360 px (thumbnails) as BMP in `%LOCALAPPDATA%\Brushkit\launcher\cache`. Files older than 2 days are removed at start-up.
+- **Paths:** the renderer reads ANSI `char*` paths through stb and `argv`. Before a path reaches it, the launcher fixes three cases:
+  - Non-ASCII input files are hard-linked or copied to an ASCII alias.
+  - Outputs with non-ASCII names are written to the cache and then moved.
+  - Rotated photos and formats stb cannot read (WEBP, TIFF) become a full-size BMP.
+- **Caches:** previews are kept in memory, keyed by `(source+frame, look, brush size)`; the limit is 40. Thumbnails are keyed by `(source+frame, style, brush size)`.
+- **Live:** it is stopped through the stop file, with a kill as the fallback after 3 s. A style or brush-size change restarts it after a 400 ms debounce. The status line comes from the renderer's `Brushkit live: N frames, WxH` lines; `live_spout.cpp` now flushes those and the "Waiting for Spout sender" line.
+- **Export progress** is parsed from the `\r  n/total  pct%  ms/frame` lines. Cancel terminates the renderer and deletes the partial file.
+
+## Easy to break
+- Any new `printf` on stdout in the serve path corrupts the protocol. Diagnostics go to stderr, which the launcher drains into *Show details*.
+- The export progress regex depends on the exact `printf` in `main.cpp`'s video path.

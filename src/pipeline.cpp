@@ -34,7 +34,12 @@ enum : GLuint {
     UNIT_BRUSH = 4,
     UNIT_E = 5,        // optical flow field
     UNIT_F = 6,        // previous canvas, for flow advection
+    UNIT_TOOTH = 7,    // brushkit: support tooth
+    UNIT_SNAP = 8,     // brushkit: canvas snapshot for pickup / smear
 };
+
+// Uniform-buffer binding of the brushkit style block (Params is 0).
+constexpr GLuint BIND_STYLE_UBO = 1;
 
 // Upper bound on passes per layer, so a pathological grid cannot spin forever.
 constexpr uint32_t MAX_CHUNKS = 32u;
@@ -79,6 +84,7 @@ bool Pipeline::init() {
     m_poolCounterBuf = glu::createBuffer(GL_SHADER_STORAGE_BUFFER, 16, nullptr, GL_DYNAMIC_COPY);
 
     m_paramsUbo = glu::createBuffer(GL_UNIFORM_BUFFER, sizeof(TuningParams), nullptr, GL_DYNAMIC_DRAW);
+    m_styleUbo  = glu::createBuffer(GL_UNIFORM_BUFFER, sizeof(StyleParams), nullptr, GL_DYNAMIC_DRAW);
 
     glGenVertexArrays(1, &m_vao);   // core profile needs one bound, even empty
 
@@ -86,7 +92,7 @@ bool Pipeline::init() {
 
     m_tRef.init(); m_tError.init(); m_tSeeds.init();
     m_tTrace.init(); m_tRaster.init(); m_tImpasto.init(); m_tRelax.init();
-    m_tEtf.init(); m_tFlow.init();
+    m_tEtf.init(); m_tFlow.init(); m_tStyle.init();
     return true;
 }
 
@@ -94,21 +100,24 @@ void Pipeline::shutdown() {
     GLuint bufs[] = {m_cellBuf, m_seedBuf, m_vertexBuf, m_headerBuf,
                      m_counterBuf, m_indirectBuf, m_statsBuf, m_paramsUbo,
                      m_poolVertexBuf, m_poolHeaderBuf, m_poolCounterBuf,
-                     m_energyBuf, m_etfMaxBuf};
-    glDeleteBuffers(13, bufs);
+                     m_energyBuf, m_etfMaxBuf, m_styleUbo};
+    glDeleteBuffers(14, bufs);
     GLuint texs[] = {m_srcTex, m_refTex, m_tmpTex, m_tensorTex, m_gradTex, m_errTex,
                      m_diffTex, m_canvasTex, m_heightTex, m_prevSrcTex,
                      m_prevCanvasTex, m_underTex, m_brushTex, m_etfTex,
-                     m_lumaPrevTex, m_lumaCurTex, m_flowTex, m_flowTmpTex};
-    glDeleteTextures(18, texs);
+                     m_lumaPrevTex, m_lumaCurTex, m_flowTex, m_flowTmpTex,
+                     m_toothTex, m_finalTex, m_postTmpTex, m_snapTex, m_flatTex};
+    glDeleteTextures(23, texs);
     if (m_canvasFbo) glDeleteFramebuffers(1, &m_canvasFbo);
     if (m_srcFbo) glDeleteFramebuffers(1, &m_srcFbo);
+    if (m_finalFbo) glDeleteFramebuffers(1, &m_finalFbo);
     if (m_vao) glDeleteVertexArrays(1, &m_vao);
 }
 
 bool Pipeline::reloadShaders(std::string* err) {
     glu::Program blur, features, error, seeds, trace, stroke, impasto, canvasP;
     glu::Program poolP, relaxP, energyP, etfP, flowP;
+    glu::Program supportP, styleFieldP, finishP, postP, flatP;
 
     auto comp = [&](glu::Program& pr, const char* f) {
         if (!pr.loadCompute(f)) { if (err) *err = pr.lastError; return false; }
@@ -126,6 +135,11 @@ bool Pipeline::reloadShaders(std::string* err) {
     if (!comp(energyP, "energy.comp"))    return false;
     if (!comp(etfP, "etf.comp"))          return false;
     if (!comp(flowP, "flow.comp"))        return false;
+    if (!comp(supportP, "support.comp"))  return false;
+    if (!comp(styleFieldP, "stylefield.comp")) return false;
+    if (!comp(finishP, "finish.comp"))    return false;
+    if (!comp(postP, "post.comp"))        return false;
+    if (!comp(flatP, "flat.comp"))        return false;
     if (!stroke.loadRaster("stroke.vert", "stroke.frag")) {
         if (err) *err = stroke.lastError;
         return false;
@@ -135,12 +149,16 @@ bool Pipeline::reloadShaders(std::string* err) {
     // the previous working pipeline running.
     GLuint old[] = {m_blur.id, m_features.id, m_error.id, m_seeds.id, m_trace.id,
                     m_stroke.id, m_impasto.id, m_canvasProg.id,
-                    m_pool.id, m_relax.id, m_energy.id, m_etf.id, m_flow.id};
+                    m_pool.id, m_relax.id, m_energy.id, m_etf.id, m_flow.id,
+                    m_support.id, m_styleField.id, m_finish.id, m_post.id, m_flat.id};
     for (GLuint id : old) if (id) glDeleteProgram(id);
 
     m_blur = blur; m_features = features; m_error = error; m_seeds = seeds;
     m_trace = trace; m_stroke = stroke; m_impasto = impasto; m_canvasProg = canvasP;
     m_pool = poolP; m_relax = relaxP; m_energy = energyP; m_etf = etfP; m_flow = flowP;
+    m_support = supportP; m_styleField = styleFieldP; m_finish = finishP;
+    m_post = postP; m_flat = flatP;
+    m_toothKey[0] = -1.f;   // a reloaded support.comp must be allowed to rebuild
     return true;
 }
 
@@ -150,11 +168,13 @@ void Pipeline::resize(int w, int h) {
         GLuint texs[] = {m_srcTex, m_refTex, m_tmpTex, m_tensorTex, m_gradTex,
                          m_errTex, m_diffTex, m_canvasTex, m_heightTex,
                          m_prevSrcTex, m_prevCanvasTex, m_underTex, m_etfTex,
-                         m_lumaPrevTex, m_lumaCurTex, m_flowTex, m_flowTmpTex};
-        glDeleteTextures(17, texs);
+                         m_lumaPrevTex, m_lumaCurTex, m_flowTex, m_flowTmpTex,
+                         m_toothTex, m_finalTex, m_postTmpTex, m_snapTex, m_flatTex};
+        glDeleteTextures(22, texs);
     }
     if (m_canvasFbo) glDeleteFramebuffers(1, &m_canvasFbo);
     if (m_srcFbo) glDeleteFramebuffers(1, &m_srcFbo);
+    if (m_finalFbo) glDeleteFramebuffers(1, &m_finalFbo);
 
     m_w = w; m_h = h;
     // Mips on the source only so the 'average' underpaint can read the 1x1
@@ -188,6 +208,16 @@ void Pipeline::resize(int w, int h) {
     m_prevSrcTex    = glu::createTexture2D(w, h, GL_RGBA8);
     m_prevCanvasTex = glu::createTexture2D(w, h, GL_RGBA16F);
     m_underTex      = glu::createTexture2D(w, h, GL_RGBA16F);
+    // brushkit style stages. The output image is separate from the canvas so
+    // that relighting and aging never feed back into the temporal state.
+    m_toothTex      = glu::createTexture2D(w, h, GL_R16F);
+    m_finalTex      = glu::createTexture2D(w, h, GL_RGBA16F);
+    m_postTmpTex    = glu::createTexture2D(w, h, GL_RGBA16F);
+    m_snapTex       = glu::createTexture2D(w, h, GL_RGBA16F);
+    m_flatTex       = glu::createTexture2D(w, h, GL_RGBA16F);
+    m_toothKey[0] = -1.f;
+    m_outputIsFinal = false;
+    m_flatValid = false;
 
     m_havePrev = false;
     m_underValid = false;
@@ -201,6 +231,9 @@ void Pipeline::resize(int w, int h) {
 
     glCreateFramebuffers(1, &m_srcFbo);
     glNamedFramebufferTexture(m_srcFbo, GL_COLOR_ATTACHMENT0, m_srcTex, 0);
+
+    glCreateFramebuffers(1, &m_finalFbo);
+    glNamedFramebufferTexture(m_finalFbo, GL_COLOR_ATTACHMENT0, m_finalTex, 0);
 
     // Two floats per 16x16 workgroup. energy.comp needs one (its partial
     // sum); etf.comp's coherence pass needs two (a sum and a count), and the
@@ -224,6 +257,187 @@ bool Pipeline::setSource(const unsigned char* rgba, int w, int h) {
     glTextureSubImage2D(m_srcTex, 0, 0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
     glGenerateTextureMipmap(m_srcTex);
     return true;
+}
+
+bool Pipeline::setSourceTexture(GLuint texture, int w, int h) {
+    if (!texture || w <= 0 || h <= 0) return false;
+    if (w == m_w && h == m_h && m_srcTex) {
+        glCopyImageSubData(m_srcTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_prevSrcTex, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+    }
+    resize(w, h);
+    glCopyImageSubData(texture, GL_TEXTURE_2D, 0, 0, 0, 0,
+                       m_srcTex, GL_TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+    glGenerateTextureMipmap(m_srcTex);
+    return true;
+}
+
+// ── brushkit style stages ───────────────────────────────────────────────────
+
+void Pipeline::uploadStyle(float time) {
+    m_style.time = time;
+    glNamedBufferSubData(m_styleUbo, 0, sizeof(StyleParams), &m_style);
+    glBindBufferBase(GL_UNIFORM_BUFFER, BIND_STYLE_UBO, m_styleUbo);
+}
+
+// Turner's eye of the storm is wherever the light is. On arbitrary footage that
+// has to be found per frame: the brightest texel of a ~16 px mip of the source
+// (a broad region, not a specular point), eased over time on video so the
+// vortex drifts with the light instead of jumping.
+void Pipeline::trackVortex(bool smooth) {
+    const int maxDim = std::max(m_w, m_h);
+    const int level = std::max(0, int(std::floor(std::log2(float(maxDim) / 16.f))));
+    const int lw = std::max(1, m_w >> level), lh = std::max(1, m_h >> level);
+    std::vector<float> px(size_t(lw) * lh * 4);
+    glGetTextureImage(m_srcTex, level, GL_RGBA, GL_FLOAT, GLsizei(px.size() * 4), px.data());
+    float best = -1.f, bx = 0.5f, by = 0.45f;
+    for (int y = 0; y < lh; ++y)
+        for (int x = 0; x < lw; ++x) {
+            const float* c = &px[(size_t(y) * lw + x) * 4];
+            const float dx = (x + 0.5f) / lw - 0.5f, dy = (y + 0.5f) / lh - 0.5f;
+            // a mild pull to the centre breaks ties toward a composed vortex
+            const float s = 0.299f * c[0] + 0.587f * c[1] + 0.114f * c[2]
+                          - 0.15f * (dx * dx + dy * dy);
+            if (s > best) { best = s; bx = (x + 0.5f) / lw; by = (y + 0.5f) / lh; }
+        }
+    if (smooth && m_vortexEma[0] >= 0.f) {
+        m_vortexEma[0] += (bx - m_vortexEma[0]) * 0.08f;
+        m_vortexEma[1] += (by - m_vortexEma[1]) * 0.08f;
+    } else {
+        m_vortexEma[0] = bx;
+        m_vortexEma[1] = by;
+    }
+    m_style.vortexX = m_vortexEma[0];
+    m_style.vortexY = m_vortexEma[1];
+}
+
+void Pipeline::buildSupport() {
+    const float key[4] = {m_style.support, m_style.supportScale, float(m_w), float(m_h)};
+    if (std::equal(key, key + 4, m_toothKey)) return;
+    std::copy(key, key + 4, m_toothKey);
+    m_support.use();
+    glBindImageTexture(0, m_toothTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
+    glDispatchCompute(divUp(uint32_t(m_w), 16), divUp(uint32_t(m_h), 16), 1);
+    glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+}
+
+// fields.py on the layer's direction field. Reads m_gradTex, writes m_etfTex,
+// copies back -- the patch mode samples the field at a patch's seed, so an
+// in-place rewrite would race.
+void Pipeline::applyStyleField() {
+    const uint32_t gx = divUp(uint32_t(m_w), 16), gy = divUp(uint32_t(m_h), 16);
+    m_styleField.use();
+    glBindTextureUnit(UNIT_A, m_gradTex);
+    glBindImageTexture(0, m_etfTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+    glDispatchCompute(gx, gy, 1);
+    glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT |
+                    GL_TEXTURE_UPDATE_BARRIER_BIT);
+    glCopyImageSubData(m_etfTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+                       m_gradTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_w, m_h, 1);
+    glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
+}
+
+void Pipeline::layStyleGround(TuningParams& p, const std::vector<float>& radii) {
+    const uint32_t gx = divUp(uint32_t(m_w), 16), gy = divUp(uint32_t(m_h), 16);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    m_flatValid = false;
+
+    const bool flatPrint = m_style.groundMode > 1.5f;
+    const bool wash = m_style.watercolor > 0.f;
+    if (flatPrint || wash) {
+        // Kuwahara of the source; the print styles then quantize it into the
+        // canvas, the watercolour wash reads it straight from m_flatTex.
+        m_flat.use();
+        glUniform1i(m_flat.uniform("uPass"), 0);
+        glBindTextureUnit(UNIT_A, m_srcTex);
+        glBindImageTexture(0, m_flatTex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glBindImageTexture(1, m_canvasTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    }
+    if (flatPrint) {
+        glUniform1i(m_flat.uniform("uPass"), 1);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        m_flatValid = true;
+    } else {
+        // Toned ground + a thin lay-in of the coarsest layer's blur. For the
+        // watercolour the lay-in opacity is 0: the canvas is the bare paper.
+        buildReference(p, radii[0]);
+        m_canvasProg.use();
+        glUniform1i(m_canvasProg.uniform("uPass"), 4);
+        glBindTextureUnit(UNIT_A, m_refTex);
+        glBindImageTexture(0, m_canvasTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    }
+    if (wash) m_flatValid = true;
+
+    glCopyImageSubData(m_canvasTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+                       m_underTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_w, m_h, 1);
+    m_underValid = true;
+    const float zeroF[4] = {0.f, 0.f, 0.f, 0.f};
+    glClearTexImage(m_heightTex, 0, GL_RED, GL_FLOAT, zeroF);
+}
+
+// Smear or wash -> finish -> overlays, always into m_finalTex. Nothing here
+// writes the canvas, which is the painting state the next frame starts from.
+void Pipeline::runPost() {
+    const uint32_t gx = divUp(uint32_t(m_w), 16), gy = divUp(uint32_t(m_h), 16);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GLuint color = m_canvasTex;
+
+    m_post.use();
+    glUniform1i(m_post.uniform("uFlatValid"), m_flatValid ? 1 : 0);
+    glBindTextureUnit(UNIT_B, m_gradTex);
+    glBindTextureUnit(UNIT_C, m_flatTex);
+    glBindTextureUnit(UNIT_D, m_toothTex);
+    glBindTextureUnit(UNIT_BRUSH, m_srcTex);   // unit 4 = uSrc in post.comp
+
+    if (m_style.watercolor > 0.f && m_flatValid) {
+        glUniform1i(m_post.uniform("uPass"), 1);
+        glBindImageTexture(0, m_postTmpTex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        color = m_postTmpTex;
+    } else if (m_style.licStrength > 0.f) {
+        glUniform1i(m_post.uniform("uPass"), 0);
+        glBindTextureUnit(UNIT_A, m_canvasTex);
+        glBindImageTexture(0, m_postTmpTex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+        color = m_postTmpTex;
+    }
+
+    if (m_style.finish > 0.f) {
+        m_finish.use();
+        glBindTextureUnit(UNIT_A, color);
+        glBindTextureUnit(UNIT_B, m_heightTex);
+        glBindTextureUnit(UNIT_C, m_toothTex);
+        glBindImageTexture(0, m_finalTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+    } else {
+        glCopyImageSubData(color, GL_TEXTURE_2D, 0, 0, 0, 0,
+                           m_finalTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_w, m_h, 1);
+        glMemoryBarrier(GL_TEXTURE_UPDATE_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+    }
+
+    const bool overlays = m_style.contour > 0.f || m_style.outline > 0.f ||
+                          m_style.halftone > 0.f || m_style.caustics > 0.f ||
+                          m_style.bokashi > 0.f || m_style.rain > 0.f ||
+                          m_style.facet > 0.f || m_style.border > 0.f;
+    if (overlays) {
+        m_post.use();
+        glUniform1i(m_post.uniform("uPass"), 2);
+        glBindTextureUnit(UNIT_C, m_flatTex);
+        glBindTextureUnit(UNIT_BRUSH, m_srcTex);
+        glBindImageTexture(0, m_finalTex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
+        glDispatchCompute(gx, gy, 1);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT |
+                        GL_FRAMEBUFFER_BARRIER_BIT);
+    }
+    m_outputIsFinal = true;
 }
 
 void Pipeline::buildBrushTiles(const std::vector<float>& radii, float bristleDensity) {
@@ -550,8 +764,16 @@ void Pipeline::layUnderpaint(TuningParams& p, const RenderConfig& cfg,
     }
 
     if (temporal) {
+        // brushkit: exposed borders take a fresh lay-in of this frame, so the
+        // coarsest blur has to exist before the advection pass reads it.
+        // Fresh paint needs the same lay-in for the pixels it wipes.
+        if ((styleOn() && m_flowValid) || cfg.freshPaint > 0.f) {
+            buildReference(p, radii[0]);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
         // Start from the previous frame's paint and repaint only what moved.
         m_canvasProg.use();
+        glBindTextureUnit(UNIT_A, m_refTex);
         glBindTextureUnit(UNIT_E, m_flowTex);
 
         if (m_flowValid) {
@@ -569,6 +791,8 @@ void Pipeline::layUnderpaint(TuningParams& p, const RenderConfig& cfg,
 
         glUniform1i(m_canvasProg.uniform("uPass"), 2);
         glUniform1i(m_canvasProg.uniform("uUseFlow"), m_flowValid ? 1 : 0);
+        glUniform1f(m_canvasProg.uniform("uFreshPaint"), std::clamp(cfg.freshPaint, 0.f, 1.f));
+        glBindImageTexture(0, m_canvasTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
         glBindTextureUnit(UNIT_B, m_srcTex);
         glBindTextureUnit(UNIT_C, m_prevSrcTex);
         glBindImageTexture(1, m_diffTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R16F);
@@ -659,10 +883,13 @@ void Pipeline::repaintFromPool(const TuningParams& p, const RenderConfig& cfg,
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunci(0, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    glBlendFunci(1, GL_ONE, GL_ONE);
+    if (styleOn() && m_style.brushModel > 0.5f) glBlendFunci(1, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    else                                        glBlendFunci(1, GL_ONE, GL_ONE);
 
     m_stroke.use();
     glBindTextureUnit(UNIT_BRUSH, m_brushTex);
+    glBindTextureUnit(UNIT_TOOTH, m_toothTex);
+    glBindTextureUnit(UNIT_SNAP, m_snapTex);
     glBindVertexArray(m_vao);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirectBuf);
     glDrawArraysIndirect(GL_TRIANGLE_STRIP, nullptr);
@@ -836,15 +1063,32 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_paramsUbo);
     uploadParams(p);
 
+    // The style block is always bound: with enabled == 0 every shader takes
+    // its original gpu-sbr path.
+    const bool style = styleOn();
+    const bool bkBrush = style && m_style.brushModel > 0.5f;
+    const bool strokesOff = style && m_style.strokesOff > 0.5f;
+    m_outputIsFinal = false;
+    if (style && m_style.fieldMode > 0.5f && m_style.fieldMode < 1.5f && m_style.autoVortex > 0.5f)
+        trackVortex(temporal && m_havePrev);
+    uploadStyle(p.frame);
+    if (style) {
+        m_tStyle.begin();
+        buildSupport();
+        endStage(m_tStyle, m_ms.style);
+    }
+
     // --- canvas setup ----------------------------------------------------
     // The flow has to exist before the underpaint, which is what consumes it.
     // It is only ever used by the temporal path, so there is no reason to pay
     // for it on a still.
-    if (useTemporal) computeFlow(p, cfg);
+    if (useTemporal && !strokesOff) computeFlow(p, cfg);
     else m_flowValid = false;
 
     m_tRef.begin();
-    layUnderpaint(p, cfg, radii, useTemporal);
+    const bool styleGround = style && (m_style.groundMode > 0.5f || m_style.watercolor > 0.f);
+    if (styleGround && (!useTemporal || strokesOff)) layStyleGround(p, radii);
+    else layUnderpaint(p, cfg, radii, useTemporal && !strokesOff);
     endStage(m_tRef, m_ms.ref);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_SEEDS, m_seedBuf);
@@ -868,11 +1112,33 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
     }
 
     // --- per layer, coarse to fine ---------------------------------------
-    for (size_t l = 0; l < radii.size(); ++l) {
+    // Flat print styles (ukiyo-e, pop, Hockney, watercolour) place no strokes.
+    const size_t layerCount = strokesOff ? 0 : radii.size();
+    const TuningParams layerBase = p;
+    for (size_t l = 0; l < layerCount; ++l) {
         const float radius = radii[l];
         p.currentLayer = float(l);
         p.layerRadius = radius;
         p.firstLayer = (l == 0) ? 1.f : 0.f;
+
+        // brushkit per-layer roles: restore the global knobs, then apply this
+        // layer's overrides. Without a style there are none and nothing moves.
+        p.maxStrokeLength = layerBase.maxStrokeLength;
+        p.minStrokeLength = layerBase.minStrokeLength;
+        p.threshold = layerBase.threshold;
+        p.curvature = layerBase.curvature;
+        p.opacity = layerBase.opacity;
+        p.gridFactor = layerBase.gridFactor;
+        if (style && l < cfg.layerSpecs.size()) {
+            const LayerSpec& ls = cfg.layerSpecs[l];
+            auto ov = [](float& dst, float v) { if (!std::isnan(v)) dst = v; };
+            ov(p.maxStrokeLength, ls.maxLen);
+            ov(p.minStrokeLength, ls.minLen);
+            ov(p.threshold, ls.threshold);
+            ov(p.curvature, ls.curvature);
+            ov(p.opacity, ls.opacity);
+            ov(p.gridFactor, ls.gridFactor);
+        }
         // worker.js: `grid = Math.max(1, Math.round(radius * gridFactor))`.
         const int grid = std::max(1, int(std::lround(radius * p.gridFactor)));
         p.gridSpacing = float(grid);
@@ -917,6 +1183,19 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
         // are rebuilt per layer rather than shared. Its own timer, because it
         // is optional and its cost should not hide inside `reference`.
         applyEtf(p, cfg);
+
+        // brushkit orientation logic on top of the image's own flow, and the
+        // snapshot the brush reads for wet pickup / smear.
+        if (style) {
+            m_tStyle.begin();
+            applyStyleField();
+            if (bkBrush && (m_style.pickup > 0.f || m_style.smear > 0.f)) {
+                glCopyImageSubData(m_canvasTex, GL_TEXTURE_2D, 0, 0, 0, 0,
+                                   m_snapTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_w, m_h, 1);
+                glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
+            }
+            endStage(m_tStyle, m_ms.style);
+        }
 
         // --- error map + per-cell reduction ------------------------------
         // Once per layer, against the canvas as it stands before this layer
@@ -1009,12 +1288,17 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
             // Colour: premultiplied source-over, once per stroke. Height:
-            // plain accumulation, matching `heightBuf[i] += mv * impasto`.
+            // plain accumulation, matching `heightBuf[i] += mv * impasto` --
+            // or, for the brushkit brush, deposit plus partial levelling of
+            // the relief underneath (its `flatten`), carried in the alpha.
             glBlendFunci(0, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-            glBlendFunci(1, GL_ONE, GL_ONE);
+            if (bkBrush) glBlendFunci(1, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+            else         glBlendFunci(1, GL_ONE, GL_ONE);
 
             m_stroke.use();
             glBindTextureUnit(UNIT_BRUSH, m_brushTex);
+            glBindTextureUnit(UNIT_TOOTH, m_toothTex);
+            glBindTextureUnit(UNIT_SNAP, m_snapTex);
             glBindVertexArray(m_vao);
             glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirectBuf);
             glDrawArraysIndirect(GL_TRIANGLE_STRIP, nullptr);
@@ -1046,8 +1330,10 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
     if (wantRelax) relax(p, cfg, radii);
 
     // --- impasto lighting -------------------------------------------------
+    // A style with its own finish relights the height field there instead,
+    // into the output image, and leaves the canvas unlit.
     m_tImpasto.begin();
-    if (p.impastoLight > 0.f) {
+    if (p.impastoLight > 0.f && !(style && m_style.finish > 0.f)) {
         m_impasto.use();
         glBindTextureUnit(UNIT_A, m_heightTex);
         glBindImageTexture(0, m_canvasTex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA16F);
@@ -1055,6 +1341,13 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
     }
     endStage(m_tImpasto, m_ms.impasto);
+
+    // --- brushkit finish + effects, into the output image ------------------
+    if (style) {
+        m_tStyle.begin();
+        runPost();
+        endStage(m_tStyle, m_ms.style);
+    }
 
     // Keep this frame's canvas for the next temporal frame.
     glCopyImageSubData(m_canvasTex, GL_TEXTURE_2D, 0, 0, 0, 0,
@@ -1064,7 +1357,7 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
 
 std::vector<unsigned char> Pipeline::readCanvas() const {
     std::vector<unsigned char> px(size_t(m_w) * size_t(m_h) * 4);
-    glGetTextureImage(m_canvasTex, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+    glGetTextureImage(outputTexture(), 0, GL_RGBA, GL_UNSIGNED_BYTE,
                       GLsizei(px.size()), px.data());
     return px;
 }
@@ -1121,6 +1414,9 @@ void Pipeline::blitToScreen(int x, int y, int w, int h, int fbW, int fbH,
     glClearColor(0.09f, 0.09f, 0.10f, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    // The painted side shows the output image: the finished, aged painting
+    // when a style ran its post chain, the canvas itself otherwise.
+    const GLuint paintedFbo = m_outputIsFinal ? m_finalFbo : m_canvasFbo;
     switch (mode) {
         case ViewMode::Source: blitRegion(m_srcFbo, x, w); break;
         case ViewMode::Split: {
@@ -1130,10 +1426,10 @@ void Pipeline::blitToScreen(int x, int y, int w, int h, int fbW, int fbH,
             // compared at all once the view is zoomed in.
             const int cut = std::clamp(int(float(w) * xf.wipe), 0, w);
             blitRegion(m_srcFbo, x, cut);
-            blitRegion(m_canvasFbo, x + cut, w - cut);
+            blitRegion(paintedFbo, x + cut, w - cut);
             break;
         }
-        default: blitRegion(m_canvasFbo, x, w); break;
+        default: blitRegion(paintedFbo, x, w); break;
     }
 
     glScissor(oldScissor[0], oldScissor[1], oldScissor[2], oldScissor[3]);
