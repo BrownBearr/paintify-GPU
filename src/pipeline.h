@@ -52,9 +52,6 @@ public:
     // Uploads an RGBA8 image and (re)sizes every render target to match.
     bool setSource(const unsigned char* rgba, int w, int h);
 
-    // GPU-only input path for live Spout frames. The texture must be RGBA8.
-    bool setSourceTexture(GLuint texture, int w, int h);
-
     // The brushkit style. Persists across renders; `enabled == 0` (the
     // default) is the classic rendering pipeline.
     void setStyle(const StyleParams& s) { m_style = s; }

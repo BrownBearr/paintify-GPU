@@ -1,7 +1,6 @@
 #include "gl_util.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
 
@@ -27,13 +26,8 @@ static int64_t fileMTime(const std::string& path) {
     return static_cast<int64_t>(st.st_mtime);
 }
 
-// The build points at the source tree (hot reload). A bundled copy -- the
-// TouchDesigner component extracts one -- says where its shaders are instead.
+// Shaders stay beside the source tree so F5 can reload them.
 static std::string shaderDir() {
-    for (const char* var : {"BRUSHKIT_SHADER_DIR", "PAINTIFY_SHADER_DIR"}) {
-        const char* dir = std::getenv(var);
-        if (dir && *dir) return std::string(dir) + "/";
-    }
     return std::string(SBR_ROOT_DIR) + "/shaders/";
 }
 

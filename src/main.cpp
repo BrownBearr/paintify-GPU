@@ -18,7 +18,6 @@
 #include "filedialog.h"
 #include "paramfile.h"
 #include "styles.h"
-#include "live_spout.h"
 
 #include <cmath>
 #include <cstdio>
@@ -123,17 +122,8 @@ struct Options {
     // brushkit
     std::string style;              // empty / "none" = classic renderer
     float styleScale = NAN;         // NaN = from the image size
-    float styleScaleMult = 1.f;     // multiplies the automatic stroke size
     bool listStyles = false;
-    bool serve = false;             // stay warm, paint stills requested on stdin
     bool play = false;              // interactive: start playing a --in video
-    // live Spout (TouchDesigner)
-    bool liveSpout = false;
-    std::string spoutIn = "Brushkit Input";
-    std::string spoutOut = "Brushkit Output";
-    std::string liveStopFile;
-    uint32_t liveParentPid = 0;
-    double targetFps = 30.0;
 };
 
 void usage() {
@@ -144,21 +134,9 @@ void usage() {
         "                          'none' selects the classic renderer\n"
         "  --style-scale <f>       stroke size; default follows the image size\n"
         "                          (1.0 at a 1000 px long side)\n"
-        "  --style-scale-mult <f>  multiply the automatic stroke size (1.0)\n"
         "  --list-styles           list the styles and exit\n"
         "  --play                  with --in <video>: paint it in realtime in the\n"
         "                          window (also the Play button)\n"
-        "  --serve                 stay open for a front end (launcher/): print\n"
-        "                          the styles, then paint one still per stdin line\n"
-        "                          render<TAB>in<TAB>out<TAB>style<TAB>size-mult<TAB>params\n"
-        "                          and answer ok<TAB>out<TAB>w<TAB>h<TAB>ms or err<TAB>why\n"
-        "\n Live (TouchDesigner via Spout)\n"
-        "  --live-spout            paint a live Spout input, publish Spout output\n"
-        "  --spout-in <name>       input sender name (Brushkit Input)\n"
-        "  --spout-out <name>      output sender name (Brushkit Output)\n"
-        "  --target-fps <n>        live painted frames per second (30)\n"
-        "  --live-stop-file <path> exit live mode when this file appears\n"
-        "  --live-parent-pid <n>   exit if the owning process closes\n\n"
         "  --in <path>            source image (omitted: synthetic subject)\n"
         "  --out <path>            output PNG for --headless and the S key\n"
         "  --headless              render and exit, no window\n"
@@ -277,16 +255,8 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--jitter-per-frame") o.jitterPerFrame = true;
         else if (a == "--style")           o.style = next(i);
         else if (a == "--style-scale")     o.styleScale = std::strtof(next(i), nullptr);
-        else if (a == "--style-scale-mult") o.styleScaleMult = std::strtof(next(i), nullptr);
         else if (a == "--list-styles")     o.listStyles = true;
-        else if (a == "--serve")           o.serve = true;
         else if (a == "--play")            o.play = true;
-        else if (a == "--live-spout")      o.liveSpout = true;
-        else if (a == "--spout-in")        o.spoutIn = next(i);
-        else if (a == "--spout-out")       o.spoutOut = next(i);
-        else if (a == "--target-fps")      o.targetFps = atof(next(i));
-        else if (a == "--live-stop-file")  o.liveStopFile = next(i);
-        else if (a == "--live-parent-pid") o.liveParentPid = uint32_t(std::strtoul(next(i), nullptr, 10));
         else if (a == "--frames")        { o.framesDir = next(i); o.headless = true; }
         else if (a == "--video")         { o.videoIn = next(i); o.headless = true; }
         else if (a == "--batch")         { o.batchDir = next(i); o.headless = true; }
@@ -731,20 +701,12 @@ int main(int argc, char** argv) {
             printf("%-14s %-24s %-24s %-10s %s\n", s.key, s.name, s.era, s.years, s.summary);
         return 0;
     }
-    // A front end needs the style list before the (slow) GL start-up.
-    if (opt.serve) {
-        for (const styles::Info& s : styles::list())
-            printf("style\t%s\t%s\t%s\t%s\t%s\t%s\n", s.key, s.name, s.era, s.years,
-                   s.artists, s.summary);
-        fflush(stdout);
-    }
-
     if (!glfwInit()) { fprintf(stderr, "glfwInit failed\n"); return 1; }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    if (opt.headless || opt.liveSpout || opt.serve) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    if (opt.headless) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
     GLFWwindow* win = glfwCreateWindow(1600, 900, "brushkit", nullptr, nullptr);
     if (!win) {
@@ -767,101 +729,11 @@ int main(int argc, char** argv) {
     pipe.setEtfLogging(opt.etfLog);
     pipe.setFlowLogging(opt.flowLog);
 
-    // ------------------------------------------------------------------
-    // Serve: stay warm and paint one still per stdin line. Start-up (GL
-    // context, shaders) costs seconds and a still costs milliseconds, so a
-    // front end that previews on every click keeps one of these running.
-    // Each request starts from the defaults a fresh command line does
-    // (preset 0, then the params file, then the style), so a served render
-    // matches --headless with the same settings. Ends when stdin closes.
-    // ------------------------------------------------------------------
-    if (opt.serve) {
-        printf("ready\t%s\n", reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
-        fflush(stdout);
-        auto reply = [](const char* fmt, auto... args) {
-            printf(fmt, args...);
-            fflush(stdout);
-        };
-        char line[8192];
-        while (fgets(line, sizeof(line), stdin)) {
-            std::string s(line);
-            while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
-            std::vector<std::string> f;
-            for (size_t a = 0;;) {
-                const size_t b = s.find('\t', a);
-                f.push_back(s.substr(a, b == std::string::npos ? std::string::npos : b - a));
-                if (b == std::string::npos) break;
-                a = b + 1;
-            }
-            if (f[0] == "quit") break;
-            if (f[0] != "render" || f.size() < 6) { reply("err\tbad request\n"); continue; }
-            const std::string& inPath = f[1];
-            const std::string& outPath = f[2];
-            const std::string& styleKey = f[3];
-            const float mult = f[4].empty() ? 1.f : std::strtof(f[4].c_str(), nullptr);
-            const std::string& paramsPath = f[5];
-
-            const double t0 = glfwGetTime();
-            int w = 0, h = 0, n = 0;
-            unsigned char* px = stbi_load(inPath.c_str(), &w, &h, &n, 4);
-            if (!px) {
-                reply("err\tcannot read %s (%s)\n", inPath.c_str(), stbi_failure_reason());
-                continue;
-            }
-            const bool srcOk = pipe.setSource(px, w, h);
-            stbi_image_free(px);
-            if (!srcOk) { reply("err\tcannot use a %dx%d source\n", w, h); continue; }
-
-            TuningParams sp;
-            RenderConfig sc;
-            StyleParams ss;
-            applyPreset(kPresets[0], sp, sc, nullptr);
-            std::string fileKey;
-            bool fileHasStyle = false;
-            if (!paramsPath.empty()) {
-                std::string perr;
-                if (!paramfile::load(paramsPath, &sp, &sc, &perr, &ss, &fileKey, &fileHasStyle)) {
-                    reply("err\t%s\n", perr.c_str());
-                    continue;
-                }
-            }
-            if (!(styleKey.empty() && fileHasStyle)) {   // else: the file's look, as saved
-                const int idx = styleKey.empty() ? 0 : styles::indexOf(styleKey);
-                if (idx < 0) { reply("err\tunknown style %s\n", styleKey.c_str()); continue; }
-                if (idx > 0) styles::apply(idx, styles::autoScale(w, h) * mult, sp, sc, ss);
-                else styles::clear(ss, sc);
-            }
-            applyOverrides(opt, sp, sc, nullptr);
-            pipe.setStyle(ss);
-            pipe.resetTemporal();
-            pipe.render(sp, sc);
-            const std::vector<unsigned char> painted = pipe.readCanvas();
-            // Previews go out as BMP: PNG compression costs more than the painting.
-            const std::string ext = std::filesystem::path(outPath).extension().string();
-            const int pw = pipe.width(), ph = pipe.height();
-            const bool wrote =
-                (ext == ".bmp") ? stbi_write_bmp(outPath.c_str(), pw, ph, 4, painted.data()) != 0
-              : (ext == ".jpg" || ext == ".jpeg")
-                              ? stbi_write_jpg(outPath.c_str(), pw, ph, 4, painted.data(), 95) != 0
-              : stbi_write_png(outPath.c_str(), pw, ph, 4, painted.data(), pw * 4) != 0;
-            if (!wrote) {
-                reply("err\tcannot write %s\n", outPath.c_str());
-                continue;
-            }
-            reply("ok\t%s\t%d\t%d\t%.1f\n", outPath.c_str(), pipe.width(), pipe.height(),
-                  (glfwGetTime() - t0) * 1000.0);
-        }
-        pipe.shutdown();
-        glfwDestroyWindow(win);
-        glfwTerminate();
-        return 0;
-    }
-
     std::string sourceNote;
     // Interactive video is decoded by acceptPaths below, not by stb_image.
     const bool guiVideoInput = !opt.headless && !opt.in.empty() &&
                                media::isVideoExtension(opt.in);
-    if (!opt.liveSpout && !loadSource(pipe, guiVideoInput ? "" : opt.in, &sourceNote)) {
+    if (!loadSource(pipe, guiVideoInput ? "" : opt.in, &sourceNote)) {
         fprintf(stderr, "no source image\n");
         return 1;
     }
@@ -928,7 +800,7 @@ int main(int argc, char** argv) {
             // as saved
         } else if (styleIdx > 0) {
             const float sc = std::isnan(opt.styleScale)
-                           ? styles::autoScale(w, h) * opt.styleScaleMult : opt.styleScale;
+                           ? styles::autoScale(w, h) : opt.styleScale;
             styles::apply(styleIdx, sc, tp, rc, styleP);
         } else {
             styles::clear(styleP, rc);
@@ -949,7 +821,6 @@ int main(int argc, char** argv) {
             int n = 0;
             if (!files.empty()) stbi_info(files.front().c_str(), &sw, &sh, &n);
         }
-        if (opt.liveSpout) { sw = 1280; sh = 720; }   // refined on the first live frame
         applyStyleFor(sw, sh, params, cfg);
     }
 
@@ -962,26 +833,6 @@ int main(int argc, char** argv) {
         } else {
             printf("wrote %s\n", opt.saveParamsFile.c_str());
         }
-    }
-
-    // ------------------------------------------------------------------
-    // Live: TouchDesigner (or anything Spout) in, painted frames out.
-    // ------------------------------------------------------------------
-    if (opt.liveSpout) {
-        LiveSpoutConfig live;
-        live.inputName = opt.spoutIn;
-        live.outputName = opt.spoutOut;
-        live.fps = opt.targetFps;
-        live.stopFile = opt.liveStopFile;
-        live.parentPid = opt.liveParentPid;
-        live.onResize = [&](int w, int h, TuningParams& tp, RenderConfig& rc) {
-            applyStyleFor(w, h, tp, rc);
-        };
-        const int result = runLiveSpout(win, pipe, params, cfg, live);
-        pipe.shutdown();
-        glfwDestroyWindow(win);
-        glfwTerminate();
-        return result;
     }
 
     // ------------------------------------------------------------------
@@ -1178,9 +1029,8 @@ int main(int argc, char** argv) {
     int guiStyle = styleIdx;
     bool customLookActive = keepFileStyle;
     bool styleAutoScale = !customLookActive && std::isnan(opt.styleScale);
-    // --style-scale-mult (the launcher's brush size) rides on the automatic size.
     auto autoSize = [&]() {
-        return styles::autoScale(pipe.width(), pipe.height()) * opt.styleScaleMult;
+        return styles::autoScale(pipe.width(), pipe.height());
     };
     float styleScaleVal = std::isnan(opt.styleScale) ? autoSize() : opt.styleScale;
     int styledW = pipe.width(), styledH = pipe.height();
@@ -1203,7 +1053,7 @@ int main(int argc, char** argv) {
 
     // --- realtime playback of a loaded video --------------------------------
     // The painting runs in a few ms per frame, so the window can paint the
-    // footage as it plays -- the GUI-side equivalent of the live Spout mode.
+    // footage as it plays.
     bool playing = false;
     media::Reader player;
     std::vector<unsigned char> playFrame;

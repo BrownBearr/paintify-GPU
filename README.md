@@ -1,20 +1,10 @@
 # brushkit
 
-## The easy way: double-click `Brushkit.bat`
+## Launch
 
-It opens the **Brushkit launcher**, a window that walks you through four steps:
+Double-click `run.bat` to open the painting editor with the Cezanne style. Drag an image or video onto `run.bat` to open that file directly. In the editor you can choose any style, tune its settings, save an image, or export a painted video. Video features require ffmpeg and ffprobe on `PATH`.
 
-1. **What to paint.** Open an image or a video, or switch to *Live (TouchDesigner)*. You can also drop a file onto `Brushkit.bat`.
-2. **Pick a style.** Every card shows *your* picture in that style, with its era and painter underneath.
-3. **Preview.** The large preview updates the moment you click a card. Hold **Compare** to see the original, and use **Brush size** to make the strokes bigger or smaller.
-4. **Save or play:**
-   - **Save painting** writes a full-size PNG or JPG.
-   - **Export painted video** writes an MP4, with a progress bar and the original sound.
-   - **Play it painted** paints the clip in realtime in a window.
-   - **Fine-tune in the editor** opens every slider.
-   - **Start live** paints a TouchDesigner feed in realtime.
-
-It needs Python 3 with Pillow (`python -m pip install pillow`), and ffmpeg on `PATH` for videos. If the renderer has not been built yet, the launcher offers a **Build** button. See *The launcher* in `system_architecture.md` for how it works.
+Build the renderer first with `tools\build.bat` if `build\brushkit.exe` is missing.
 
 ## What this repository is
 
@@ -45,11 +35,10 @@ build\brushkit.exe --style turner                         # GUI: style menu + st
 build\brushkit.exe --headless --in photo.jpg --style cezanne --out painted.png
 build\brushkit.exe --video clip.mp4 --out painted.mp4 --style vangogh --temporal-diff 12 --flow 4
 build\brushkit.exe --in clip.mp4 --style monet --play     # paint the clip live in the window
-build\brushkit.exe --live-spout --style ukiyoe            # TouchDesigner / Spout, realtime
 ```
 
 - **`--style-scale <f>`** sets the stroke size. By default it follows the image: 1.0 at a 1000 px long side, 1.92 at 1080p. Every other flag still overrides the style, for example `--style cezanne --threshold 18`.
-- **GUI.** The *BRUSHKIT STYLE* combo sits at the top of the panel, with collapsible brush, field and colour, and surface and effects sliders below it. **Save params** writes the whole tuned style, including the style block, into the `.sbr` file, and `--params look.sbr` reproduces it exactly in a video or live render.
+- **GUI.** The *BRUSHKIT STYLE* combo sits at the top of the panel, with collapsible brush, field and colour, and surface and effects sliders below it. **Save params** writes the whole tuned style, including the style block, into the `.sbr` file, and `--params look.sbr` reproduces it in a video or image render.
 - **Realtime video in the GUI.** Open a video, then press **Play (paint in realtime)**, or pass `--in clip.mp4 --play`. It paints every frame as it plays and turns on temporal coherence and optical flow. At 1280×720 with Turner it holds the clip's 30 fps at 4–9 ms of GPU per frame.
 - **Video export** at 1280×720, measured end to end including ffmpeg:
 
@@ -59,8 +48,6 @@ build\brushkit.exe --live-spout --style ukiyoe            # TouchDesigner / Spou
   | Cezanne | 56 fps | 4.3 ms |
   | Van Gogh | 99 fps | 2.7 ms |
   | Ukiyo-e | 161 fps | 0.5 ms |
-
-- **TouchDesigner.** Build, then run `touchdesigner/install_brushkit.py` in TouchDesigner's Textport. It creates `Brushkit.tox`: one TOP in, one TOP out, with a *Painting style* menu. See [touchdesigner/README.md](touchdesigner/README.md). The Spout round trip TouchDesigner uses is tested by `build\brushkit-spout-smoke.exe --live --style <name>`. It runs at 26–30 painted fps at 1280×720 against a 30 fps target.
 
 ### Video stability additions
 
@@ -113,7 +100,7 @@ for the method and the numbers.
 
 ## Build
 
-Requires Windows, MSVC Build Tools, CMake >= 3.21, vcpkg, and an OpenGL 4.6 GPU. Dependencies (`glfw3`, `glad`, `glm`, `stb`, `imgui`, `Spout2`) come from `vcpkg.json`.
+Requires Windows, MSVC Build Tools, CMake >= 3.21, vcpkg, and an OpenGL 4.6 GPU. Dependencies (`glfw3`, `glad`, `glm`, `stb`, `imgui`) come from `vcpkg.json`.
 
 ```sh
 tools\build.bat            # loads vcvars64, configures with Ninja, builds

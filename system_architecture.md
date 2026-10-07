@@ -448,7 +448,7 @@ Brushkit has a classic renderer and a style layer. The earlier sections describe
 - The style UBO (binding 1) is always bound, and every shader tests `styleOn()` or `brushkitBrush()` before doing anything new.
 - The `stroke.frag` height output changed from `float` to `vec4`. The web model writes `.a = 0` and still blends `ONE, ONE`, so it is identical.
 
-Check classic mode with `--style none` on `launcher/sample.jpg`. Its rendering path should bypass the style-only stages.
+Check classic mode with `--style none` on `assets/sample.jpg`. Its rendering path should bypass the style-only stages.
 
 ## Data added to the frame
 
@@ -458,7 +458,7 @@ m_toothTex   R16F     support micro-relief (support.comp), rebuilt only on suppo
 m_snapTex    RGBA16F  canvas copied at the start of each layer, read by the brush for pickup/smear
 m_flatTex    RGBA16F  Kuwahara colour (+ region label in .a) for print / watercolour styles
 m_postTmpTex RGBA16F  smear or wash intermediate
-m_finalTex   RGBA16F  the OUTPUT image: finish + effects. readCanvas / blit / Spout send use
+m_finalTex   RGBA16F  the OUTPUT image: finish + effects. readCanvas / blit use
                       outputTexture(), which is m_finalTex when a style ran, else the canvas
 ```
 
@@ -496,51 +496,8 @@ brushkit paints a style in several passes with different brushes. Here each Hert
 ## Verification
 
 ```
-build\brushkit.exe --headless --in launcher\sample.jpg --style none --out a.png
+build\brushkit.exe --headless --in assets\sample.jpg --style none --out a.png
 build\brushkit.exe --headless --in <scene> --style <name> --out b.png    # each style
 build\brushkit.exe --video in.mp4 --out o.mp4 --style turner --temporal-diff 12 --flow 4
 build\brushkit.exe --in in.mp4 --style turner --play                     # GUI realtime, logs fps
-build\brushkit-spout-smoke.exe --live --style turner                             # TouchDesigner path
 ```
-
-# The launcher (`launcher/brushkit_launcher.py`, `Brushkit.bat`)
-
-A Tkinter + Pillow front end. It never paints anything itself; it drives the renderer in four ways:
-
-| Launcher action | Renderer process |
-|---|---|
-| Previews, gallery thumbnails, **Save painting** | One long-lived `brushkit --serve` |
-| **Export painted video** | `--video in --out out.mp4 <look> --temporal-diff 12 --flow 4` (steady) or `--temporal-diff 0` |
-| **Fine-tune in the editor** / **Play it painted** | The ImGui window: `--in <file> <look> [--play]` |
-| **Start live** | `--live-spout <look> --live-parent-pid <launcher> --live-stop-file <cache>\live.stop` |
-
-`<look>` is either `--style <key> --style-scale-mult <brush size>` or `--params <saved .sbr>`.
-
-## `--serve` (main.cpp)
-- The renderer prints `style<TAB>key<TAB>name<TAB>era<TAB>years<TAB>artists<TAB>summary` lines, then starts GL and prints `ready<TAB><gpu>`.
-- It reads one request per stdin line: `render<TAB>in<TAB>out<TAB>style<TAB>size-mult<TAB>params`. It answers `ok<TAB>out<TAB>w<TAB>h<TAB>ms` or `err<TAB>why`, and flushes after each answer.
-- Each request rebuilds the parameters from scratch: defaults, then preset 0, then the params file, then the style at `autoScale(w, h) * mult`, then the command-line overrides. This is the same order a fresh CLI run uses, so a served still matches `--headless` (mean difference 0.7/255, which is only the frame seed).
-- The output format follows the extension: `.bmp` is fast for previews, and `.png` and `.jpg` are used for saved files. PNG compression cost ~140 ms per 1000 px preview, more than the painting itself.
-- It exits when stdin closes, so a crashed or killed launcher never leaves it running.
-- Timing: start-up 1–4 s, a 1000 px preview 30–70 ms, and all 23 gallery thumbnails at 360 px in about 0.2 s.
-
-## `--style-scale-mult`
-It multiplies the automatic stroke size in every mode: CLI, editor (`autoSize()`), live (`onResize`) and serve. The launcher's *Brush size* slider needs it because the video and live resolutions are not known when the command is built.
-
-## Launcher internals
-- **One `Renderer` thread** owns the serve process. It works through a job queue in priority order: stills first, then the newest preview only (older preview requests are dropped), then thumbnails. It restarts the process if it dies. Results come back as PIL images through an event queue that the Tk thread polls every 40 ms. Tk is only touched on its own thread.
-- **Sources are prepared off-thread:**
-  - Images get EXIF rotation applied.
-  - Videos are probed with `ffprobe`, and one frame at the preview-frame slider time is extracted with `ffmpeg`.
-  - The prepared frame is saved at 1000 px (preview) and 360 px (thumbnails) as BMP in `%LOCALAPPDATA%\Brushkit\launcher\cache`. Files older than 2 days are removed at start-up.
-- **Paths:** the renderer reads ANSI `char*` paths through stb and `argv`. Before a path reaches it, the launcher fixes three cases:
-  - Non-ASCII input files are hard-linked or copied to an ASCII alias.
-  - Outputs with non-ASCII names are written to the cache and then moved.
-  - Rotated photos and formats stb cannot read (WEBP, TIFF) become a full-size BMP.
-- **Caches:** previews are kept in memory, keyed by `(source+frame, look, brush size)`; the limit is 40. Thumbnails are keyed by `(source+frame, style, brush size)`.
-- **Live:** it is stopped through the stop file, with a kill as the fallback after 3 s. A style or brush-size change restarts it after a 400 ms debounce. The status line comes from the renderer's `Brushkit live: N frames, WxH` lines; `live_spout.cpp` now flushes those and the "Waiting for Spout sender" line.
-- **Export progress** is parsed from the `\r  n/total  pct%  ms/frame` lines. Cancel terminates the renderer and deletes the partial file.
-
-## Easy to break
-- Any new `printf` on stdout in the serve path corrupts the protocol. Diagnostics go to stderr, which the launcher drains into *Show details*.
-- The export progress regex depends on the exact `printf` in `main.cpp`'s video path.

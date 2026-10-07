@@ -143,14 +143,14 @@ both invisible in the output image. See `docs/relaxation.md`.
 
 ## Reproducing
 
-The historical tables above used a reference image that is not distributed with this repository. To make a new comparison, run both renderers on `launcher/sample.jpg`; the resulting numbers will differ. The harness lives outside this repo (it reads `worker.js` from a sibling checkout). It needs Node and, for image encode/decode and metrics, Python with Pillow, NumPy and SciPy. The shape of it:
+The historical tables above used a reference image that is not distributed with this repository. To make a new comparison, run both renderers on `assets/sample.jpg`; the resulting numbers will differ. The harness lives outside this repo (it reads `worker.js` from a sibling checkout). It needs Node and, for image encode/decode and metrics, Python with Pillow, NumPy and SciPy. The shape of it:
 
 ```sh
 # raw RGBA in, raw RGBA out, PIL on either side
-python -c "from PIL import Image; im=Image.open('launcher/sample.jpg').convert('RGBA'); \
+python -c "from PIL import Image; im=Image.open('assets/sample.jpg').convert('RGBA'); \
            open('src.bin','wb').write(im.tobytes())"
 node web_render.mjs impressionist 0 0 0.45      # ~3 minutes
-build\brushkit.exe --headless --in launcher\sample.jpg --out gpu.png \
+build\brushkit.exe --headless --in assets\sample.jpg --out gpu.png \
                   --preset impressionist --passes 8
 ```
 
