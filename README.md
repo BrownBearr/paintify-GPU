@@ -6,6 +6,8 @@ A Windows GPU painting editor for images and video. The editor combines a Hertzm
 
 Run tools\build.bat, then double-click run.bat. Drag an image or video onto run.bat to open it directly. The initial synthetic image is a demo; load a file to enable export.
 
+To launch it like any installed app, run tools\install.bat. It builds Brushkit, installs it to %LOCALAPPDATA%\Programs\Brushkit (no admin rights), and adds a Start menu shortcut, so it opens from Start or by typing "Brushkit" in Windows search. Run it again after pulling changes to update; tools\install.bat -Uninstall removes it. The shortcut starts in Pictures\Brushkit, so the default export folder is created there.
+
 The editor is organized as Source → Brush texture → Stroke size → Stroke placement and path → Paint and colour → Video frame coherence → Export. **Size preset** changes only the coarse-to-fine brush radii. **Save look** and **Load look** save the complete editable settings to an .sbr file. Old .sbr files retain their saved full-look settings. Choosing a new brush clears their legacy artistic effects and per-layer overrides; radius and core path controls remain editable.
 
 The **stroke spacing** control sets candidate cell pitch to approximately radius × spacing. Higher values yield fewer candidate strokes. Stroke path controls alter geometry: maximum and minimum path length, curvature, and the image direction field govern tracing. **Keep strokes between frames** appears for video, reuses stable paint, and repaints moving areas. Switching it off also disables coherence for video export.

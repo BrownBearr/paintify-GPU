@@ -68,6 +68,7 @@ struct Metrics {
     float radiusLg = 8.f;    // popups, cards
     // controls
     float controlH = 28.f;   // every field, button and row
+    float logoSize = 20.f;   // paint-drop mark beside the top-bar wordmark
     float primaryH = 32.f;   // the one primary button per region
     float segmentInset = 2.f;
     float toggleW = 28.f, toggleH = 16.f;

@@ -21,6 +21,7 @@
 #include "styles.h"
 #include "ui_theme.h"
 #include "ui_widgets.h"
+#include "app_resources.h"
 
 #include <cmath>
 #include <cstdio>
@@ -1007,6 +1008,22 @@ int main(int argc, char** argv) {
                             GLFW_DONT_CARE);
     printf("ui: %s at %.0f%%\n", ui::F.source.c_str(), uiScale * 100.f);
 
+    // Top-bar logo: the paint drop compiled into the exe (assets/icon).
+    GLuint logoTex = 0;
+    if (std::vector<unsigned char> png; loadEmbeddedResource("BRUSHKIT_LOGO", png)) {
+        int lw = 0, lh = 0, ln = 0;
+        if (unsigned char* lp = stbi_load_from_memory(png.data(), int(png.size()), &lw, &lh, &ln, 4)) {
+            glGenTextures(1, &logoTex);
+            glBindTexture(GL_TEXTURE_2D, logoTex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, lw, lh, 0, GL_RGBA, GL_UNSIGNED_BYTE, lp);
+            glGenerateMipmap(GL_TEXTURE_2D);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            stbi_image_free(lp);
+        }
+    }
+
     filedialog::init();
 
     // Drops arrive on the GLFW callback, which cannot touch local state, so
@@ -1921,6 +1938,15 @@ int main(int argc, char** argv) {
         beginRegion("##topbar", ImVec2(0.f, 0.f), ImVec2(L.W, h),
                     ImVec2(ui::px(ui::M.barPadX), (h - ui::px(ui::M.controlH)) * 0.5f));
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(ui::M.s2), 0.f));
+        if (logoTex) {
+            const float slot = ui::px(ui::M.controlH), side = ui::px(ui::M.logoSize);
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            ImGui::Dummy(ImVec2(side, slot));
+            const ImVec2 a(p.x, std::floor(p.y + (slot - side) * 0.5f));
+            ImGui::GetWindowDrawList()->AddImage(ImTextureID(intptr_t(logoTex)), a,
+                                                 ImVec2(a.x + side, a.y + side));
+            ImGui::SameLine(0.f, ui::px(ui::M.s2));
+        }
         ui::BarText(ui::F.section, ui::C.textPrimary, "Brushkit");
         ImGui::SameLine(0.f, ui::px(ui::M.s5));
 
@@ -2877,6 +2903,7 @@ int main(int argc, char** argv) {
     printf("session: %llu frames shown, %llu canvas paints\n",
            (unsigned long long)shownFrames, (unsigned long long)pipe.renderCount());
     fflush(stdout);
+    if (logoTex) glDeleteTextures(1, &logoTex);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

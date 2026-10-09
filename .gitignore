@@ -4,6 +4,7 @@ frames_out/
 painted/
 *.png
 !brushes/atlas.png
+!assets/icon/*.png
 assets/test.jpg
 docs/*.png
 implementation_plan.md

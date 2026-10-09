@@ -22,7 +22,11 @@ add_executable(brushkit
     src/styles.cpp
     src/ui_theme.cpp
     src/ui_widgets.cpp
+    src/app_resources.cpp
 )
+if(WIN32)
+    target_sources(brushkit PRIVATE assets/icon/brushkit.rc)
+endif()
 
 target_include_directories(brushkit PRIVATE src ${STB_INCLUDE_DIRS})
 target_link_libraries(brushkit PRIVATE glfw glad::glad glm::glm imgui::imgui)
