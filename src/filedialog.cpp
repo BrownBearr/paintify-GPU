@@ -10,6 +10,8 @@
 #endif
 #include <windows.h>
 #include <shobjidl.h>
+#include <shellapi.h>
+#include <filesystem>
 
 #include <vector>
 
@@ -186,6 +188,18 @@ std::string saveFile(const char* title, const std::vector<Filter>& filters,
     return out;
 }
 
+bool reveal(const std::string& path) {
+    std::error_code ec;
+    const std::filesystem::path p(path);
+    if (path.empty() || !std::filesystem::exists(p, ec)) return false;
+    std::wstring args;
+    if (std::filesystem::is_directory(p, ec)) args = L"\"" + p.wstring() + L"\"";
+    else args = L"/select,\"" + p.wstring() + L"\"";
+    const HINSTANCE r = ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(),
+                                      nullptr, SW_SHOWNORMAL);
+    return reinterpret_cast<INT_PTR>(r) > 32;
+}
+
 } // namespace filedialog
 
 #else   // not Windows: no native dialogs, callers fall back to the CLI.
@@ -196,6 +210,7 @@ std::string openFile(const char*, const std::vector<Filter>&) { return {}; }
 std::vector<std::string> openFiles(const char*, const std::vector<Filter>&) { return {}; }
 std::string pickFolder(const char*) { return {}; }
 std::string saveFile(const char*, const std::vector<Filter>&, const char*, const char*) { return {}; }
+bool reveal(const std::string&) { return false; }
 } // namespace filedialog
 
 #endif

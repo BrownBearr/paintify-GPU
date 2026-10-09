@@ -1398,7 +1398,7 @@ void Pipeline::blitToScreen(int x, int y, int w, int h, int fbW, int fbH,
     // Letterbox. Nothing cleared here before, because the blit always covered
     // the whole viewport; an aspect-correct one does not.
     glScissor(x, y, w, h);
-    glClearColor(0.09f, 0.09f, 0.10f, 1.f);
+    glClearColor(m_backdrop[0], m_backdrop[1], m_backdrop[2], 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     // The painted side shows the output image: the finished, aged painting

@@ -74,6 +74,9 @@ public:
     void blitToScreen(int x, int y, int w, int h, int fbW, int fbH,
                       ViewMode mode = ViewMode::Painted,
                       const ViewXform& xf = ViewXform{}) const;
+    // Colour of the letterbox around the image in blitToScreen (the canvas
+    // surround). Presentation only: never reaches the painting or an export.
+    void setBackdrop(float r, float g, float b) { m_backdrop[0] = r; m_backdrop[1] = g; m_backdrop[2] = b; }
 
     bool reloadShaders(std::string* err);
     void dumpStrokes(int n) const;
@@ -211,6 +214,7 @@ private:
     GLuint m_finalFbo = 0;
     float m_toothKey[4] = {-1.f, -1.f, -1.f, -1.f};
     bool m_outputIsFinal = false;
+    float m_backdrop[3] = {0.09f, 0.09f, 0.10f};
     bool m_flatValid = false;
     glu::GpuTimer m_tStyle;
 

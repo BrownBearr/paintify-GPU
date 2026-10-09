@@ -35,4 +35,8 @@ std::string pickFolder(const char* title);
 std::string saveFile(const char* title, const std::vector<Filter>& filters,
                      const char* defaultName, const char* defaultExt);
 
+// Opens Explorer on `path`: a folder opens, a file is selected in its folder.
+// Returns false if it could not be shown.
+bool reveal(const std::string& path);
+
 } // namespace filedialog
