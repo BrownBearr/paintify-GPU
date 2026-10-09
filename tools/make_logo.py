@@ -1,97 +1,79 @@
-"""Render the Brushkit logo: a small textured cerulean paint drop.
+"""Render the Brushkit logo with Brushkit itself: an impasto sphere painted
+with the classic brush, its strokes swirling around the form.
 
-Writes assets/icon/brushkit.ico (16-256 px, for the exe, taskbar and Start
+Draws a shaded cerulean circle, paints it headless with the given
+brushkit.exe, cuts the painted sphere out with a soft circular mask and
+writes assets/icon/brushkit.ico (16-256 px, for the exe, taskbar and Start
 menu) and assets/icon/brushkit.png (256 px, drawn in the app's top bar).
-Deterministic: rerunning produces identical files.
+Rendering is deterministic, so rerunning reproduces the same icon.
 
-    python tools/make_logo.py
+    python tools/make_logo.py build/brushkit.exe
 """
-import math
 import os
+import subprocess
+import sys
+import tempfile
 
 import numpy as np
 from PIL import Image
 
-N = 1024                      # supersampled canvas
+N = 1200                       # source / render size
+R = N * 0.34                   # sphere radius in the source
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 OUT = os.path.join(ROOT, "assets", "icon")
 
-rng = np.random.default_rng(7)
+# The look: classic brush, full paint height and relief, light from the upper
+# left, and an edge-aware flow field so strokes wrap around the sphere.
+PAINT_ARGS = ["--style", "none", "--impasto", "1.0", "--impasto-light", "1.0",
+              "--light-angle", "135", "--tensor-sigma", "4", "--etf", "3"]
 
 
-def smooth_noise(shape, scale):
-    """Value noise: coarse random grid, bilinearly upsampled."""
-    gh, gw = max(2, shape[0] // scale + 2), max(2, shape[1] // scale + 2)
-    g = rng.random((gh, gw))
-    img = Image.fromarray((g * 255).astype(np.uint8)).resize(
-        (shape[1], shape[0]), Image.BICUBIC)
-    return np.asarray(img, np.float32) / 255.0
-
-
-def drop_mask():
-    """Teardrop: x = sin t * sin(t/2), y = -cos t, point at the top, with a
-    slightly wobbly, hand-painted edge."""
+def source_image(path):
+    """A lit cerulean sphere on warm paper; its shading sets the stroke flow."""
     yy, xx = np.mgrid[0:N, 0:N].astype(np.float32)
-    cx, cy, s = N * 0.5, N * 0.53, N * 0.42
-    u, v = (xx - cx) / s, (yy - cy) / s          # v: -1 top .. +1 bottom
-    # For a given v, the teardrop half-width is sin t * sin(t/2) with cos t = -v.
-    t = np.arccos(np.clip(-v, -1.0, 1.0))
-    half = np.sin(t) * np.sin(t / 2.0) * 0.92
-    wobble = (smooth_noise((N, N), 220) - 0.5) * 0.022
-    d = np.abs(u) - (half + wobble)
-    inside = (np.abs(v) <= 1.0)
-    mask = np.clip(-d * s / 2.0 + 0.5, 0.0, 1.0) * inside
-    return mask, u, v
+    c = N / 2
+    u, v = (xx - c) / R, (yy - c) / R
+    z = np.sqrt(np.clip(1 - u * u - v * v, 0, 1))
+    lam = np.clip(-0.45 * u - 0.55 * v + 0.70 * z, 0, 1)[..., None]
+    light = np.array([0x5C, 0xB8, 0xE0], np.float32)
+    dark = np.array([0x00, 0x3E, 0x66], np.float32)
+    body = dark + (light - dark) * lam
+    paper = np.array([0xF2, 0xEF, 0xE8], np.float32)
+    a = np.clip(R - np.hypot(xx - c, yy - c) + 0.5, 0, 1)[..., None]
+    img = paper * (1 - a) + body * a
+    Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).save(path)
 
 
-def render():
-    mask, u, v = drop_mask()
-
-    # Cerulean body: lighter upper-left, deeper lower-right (matches the UI
-    # accent #0077A6).
-    light = np.array([0x3F, 0xA9, 0xD6], np.float32) / 255.0
-    mid = np.array([0x00, 0x77, 0xA6], np.float32) / 255.0
-    deep = np.array([0x00, 0x46, 0x6E], np.float32) / 255.0
-    k = np.clip(0.5 + 0.45 * v + 0.35 * u, 0.0, 1.0)[..., None]
-    col = np.where(k < 0.5, light + (mid - light) * (k / 0.5),
-                   mid + (deep - mid) * ((k - 0.5) / 0.5))
-
-    # Brush texture: long slanted bristle streaks plus a little grain.
-    ang = math.radians(-28)
-    along = u * math.cos(ang) + v * math.sin(ang)
-    across = -u * math.sin(ang) + v * math.cos(ang)
-    idx = np.clip(((across + 1.5) / 3.0) * 511, 0, 511).astype(np.int32)
-    broad = smooth_noise((1, 512), 18)[0][idx] - 0.5      # wide strokes
-    fine = smooth_noise((1, 512), 4)[0][idx] - 0.5        # bristle lines
-    fade = smooth_noise((N, N), 140)                       # load varies
-    streaks = 0.7 * broad + 0.3 * fine * (0.4 + 0.6 * fade)
-    grain = smooth_noise((N, N), 5) - 0.5
-    col = col * (1.0 + 0.42 * streaks[..., None] + 0.06 * grain[..., None])
-
-    # Soft specular highlight, upper left, like wet paint.
-    hx, hy = -0.22, 0.12
-    hl = np.exp(-(((u - hx) / 0.075) ** 2 + ((v - hy) / 0.17) ** 2))
-    col = col + hl[..., None] * 0.32
-
-    col = np.clip(col, 0.0, 1.0)
-    rgba = np.dstack([col, mask])
-    return Image.fromarray((rgba * 255).astype(np.uint8), "RGBA")
+def cut_sphere(painted):
+    """Keep the painted sphere, fade the paper and outer rings to transparent."""
+    rgb = np.asarray(painted.convert("RGB"), np.float32)
+    yy, xx = np.mgrid[0:N, 0:N].astype(np.float32)
+    d = np.hypot(xx - N / 2, yy - N / 2)
+    edge = R * 0.995
+    alpha = np.clip((edge - d) / 3.0 + 0.5, 0, 1)
+    rgba = np.dstack([rgb, alpha * 255]).astype(np.uint8)
+    img = Image.fromarray(rgba, "RGBA")
+    m = int(N / 2 - R * 1.04)
+    return img.crop((m, m, N - m, N - m))
 
 
 def main():
+    if len(sys.argv) != 2:
+        sys.exit(__doc__)
+    exe = os.path.abspath(sys.argv[1])
     os.makedirs(OUT, exist_ok=True)
-    big = render()
-    # Trim to the drop and pad to a square with a small margin.
-    box = big.getbbox()
-    crop = big.crop(box)
-    side = int(max(crop.size) * 1.08)
-    sq = Image.new("RGBA", (side, side), (0, 0, 0, 0))
-    sq.paste(crop, ((side - crop.size[0]) // 2, (side - crop.size[1]) // 2))
-    sq.resize((256, 256), Image.LANCZOS).save(os.path.join(OUT, "brushkit.png"))
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, "source.png")
+        out = os.path.join(tmp, "painted.png")
+        source_image(src)
+        subprocess.run([exe, "--headless", "--in", src, "--out", out] + PAINT_ARGS,
+                       check=True, cwd=os.path.dirname(exe),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        icon = cut_sphere(Image.open(out)).resize((256, 256), Image.LANCZOS)
+    icon.save(os.path.join(OUT, "brushkit.png"))
     sizes = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48),
              (64, 64), (128, 128), (256, 256)]
-    sq.resize((256, 256), Image.LANCZOS).save(
-        os.path.join(OUT, "brushkit.ico"), sizes=sizes)
+    icon.save(os.path.join(OUT, "brushkit.ico"), sizes=sizes)
     print("wrote", OUT)
 
 
