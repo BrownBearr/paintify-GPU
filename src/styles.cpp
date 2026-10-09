@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <cstring>
 #include <cstdlib>
 #include <initializer_list>
 
@@ -573,53 +575,53 @@ struct Entry { Info info; ApplyFn fn; };
 
 const std::vector<Entry>& entries() {
     static const std::vector<Entry> e = {
-        {{"none", "Classic renderer", "-", "-", "PainterlyImageCreatorWeb",
+        {{"none", "Classic tile brush", "-", "-", "PainterlyImageCreatorWeb",
           "Hertzmann strokes with web-inspired brush tiles and presets."}, nullptr},
-        {{"tempera", "Egg Tempera Hatching", "Early Renaissance", "1300-1500",
+        {{"tempera", "Tempera hatch", "Early Renaissance", "1300-1500",
           "Fra Angelico, Botticelli", "Flat colour, then fine value hatches over a gesso panel."}, tempera},
-        {{"sfumato", "Sfumato", "High Renaissance", "1480-1520", "Leonardo da Vinci",
+        {{"sfumato", "Soft glaze", "High Renaissance", "1480-1520", "Leonardo da Vinci",
           "Smoky glazes over a warm panel, deepened shadows, yellowed varnish."}, sfumato},
-        {{"chiaroscuro", "Chiaroscuro & Impasto", "Baroque", "1600-1669", "Caravaggio, Rembrandt",
+        {{"chiaroscuro", "Loaded impasto", "Baroque", "1600-1669", "Caravaggio, Rembrandt",
           "Dark umber ground, tenebrist values, loaded impasto only in the light."}, chiaroscuro},
-        {{"dutch", "Delft Light", "Dutch Golden Age", "1650-1675", "Johannes Vermeer",
+        {{"dutch", "Fine soft brush", "Dutch Golden Age", "1650-1675", "Johannes Vermeer",
           "Fused soft paint, cool light, raised pointille dots on highlights."}, dutch},
-        {{"rococo", "Rococo Froth", "Rococo", "1730-1780", "Fragonard, Boucher",
+        {{"rococo", "Feathered flick", "Rococo", "1730-1780", "Fragonard, Boucher",
           "Pastel palette, feathery flicked commas, scumbled clouds."}, rococo},
-        {{"turner", "Vortex of Light", "Romanticism", "1830-1845", "J. M. W. Turner",
+        {{"turner", "Dry scumble", "Romanticism", "1830-1845", "J. M. W. Turner",
           "Everything swept around the light: scumbles, dry brush, lead-white impasto, smear, rain."}, turner},
-        {{"ukiyoe", "Ukiyo-e Woodblock", "Edo Japan", "1760-1860", "Hokusai, Hiroshige",
+        {{"ukiyoe", "Woodblock edge", "Edo Japan", "1760-1860", "Hokusai, Hiroshige",
           "Flat printed blocks, key lines, bokashi sky, wood grain on washi."}, ukiyoe},
-        {{"sumie", "Sumi-e Ink", "East Asian ink", "Song - Edo", "Muqi, Sesshu",
+        {{"sumie", "Dry ink", "East Asian ink", "Song - Edo", "Muqi, Sesshu",
           "Graded ink, flying-white dry brush, empty paper for the lights."}, sumie},
-        {{"watercolor", "Transparent Watercolor", "English watercolour", "1790-1910",
+        {{"watercolor", "Watercolor edge", "English watercolour", "1790-1910",
           "Turner, Sargent, Homer", "Beer-Lambert washes, dark drying rims, granulation, pencil."}, watercolor},
-        {{"monet", "Broken Color", "Impressionism", "1869-1900", "Claude Monet",
+        {{"monet", "Comma dab", "Impressionism", "1869-1900", "Claude Monet",
           "Comma strokes of unmixed colour, violet shadows, horizontal water."}, monet},
-        {{"seurat", "Pointillism", "Neo-Impressionism", "1884-1891", "Georges Seurat",
+        {{"seurat", "Pointillist dot", "Neo-Impressionism", "1884-1891", "Georges Seurat",
           "Dots of pure pigment chosen by optical mixing."}, seurat},
-        {{"cezanne", "Constructive Stroke", "Post-Impressionism", "1880-1906", "Paul Cezanne",
+        {{"cezanne", "Flat hatch", "Post-Impressionism", "1880-1906", "Paul Cezanne",
           "Flat parallel hatches patch by patch, broken colour, blue contours."}, cezanne},
-        {{"vangogh", "Rhythmic Impasto", "Post-Impressionism", "1886-1890", "Vincent van Gogh",
+        {{"vangogh", "Rhythmic ridge", "Post-Impressionism", "1886-1890", "Vincent van Gogh",
           "Loaded dashes in flowing rows, turbulent skies, dark outlines."}, vangogh},
-        {{"fauve", "Fauvism", "Fauvism", "1905-1908", "Matisse, Derain",
+        {{"fauve", "Broad flat brush", "Fauvism", "1905-1908", "Matisse, Derain",
           "Arbitrary saturated colour in broad strokes, white ground breathing."}, fauve},
-        {{"expressionist", "Expressionism", "Expressionism", "1893-1925", "Edvard Munch",
+        {{"expressionist", "Jagged drag", "Expressionism", "1893-1925", "Edvard Munch",
           "Undulating strokes, acid colour, smeared bands, heavy contours."}, expressionist},
-        {{"cubism", "Analytic Cubism", "Cubism", "1909-1912", "Picasso, Braque",
+        {{"cubism", "Angular hatch", "Cubism", "1909-1912", "Picasso, Braque",
           "Faceted planes lit from their own sides, ochre-grey hatching."}, cubism},
-        {{"gestural", "Gestural Abstraction", "Abstract Expressionism", "1948-1960", "de Kooning",
+        {{"gestural", "Wet sweep", "Abstract Expressionism", "1948-1960", "de Kooning",
           "Huge wet sweeps dragged through each other, black slashes."}, gestural},
-        {{"pop", "Pop Art Ben-Day", "Pop Art", "1961-1970", "Roy Lichtenstein",
+        {{"pop", "Smooth print brush", "Pop Art", "1961-1970", "Roy Lichtenstein",
           "Printing primaries, Ben-Day dots, heavy black key lines."}, pop},
-        {{"hockney", "California Acrylic", "Pop / Contemporary", "1964-1972", "David Hockney",
+        {{"hockney", "Acrylic flat", "Pop / Contemporary", "1964-1972", "David Hockney",
           "Flat acrylic, pool caustic lines, unpainted border."}, hockney},
-        {{"folk", "Naive / Folk", "American Folk", "1938-1961", "Grandma Moses",
+        {{"folk", "Fine stipple", "American Folk", "1938-1961", "Grandma Moses",
           "Flat local colour on board, stippled detail, fine dark lines."}, folk},
-        {{"knife", "Palette Knife Impasto", "Contemporary", "1950-today", "de Stael",
+        {{"knife", "Palette knife", "Contemporary", "1950-today", "de Stael",
           "Planar knife slabs dragged through wet paint, raking light."}, knife},
-        {{"alla_prima", "Alla Prima Bravura", "Belle Epoque", "1880-1925", "Sargent, Sorolla",
+        {{"alla_prima", "Loaded flat", "Belle Epoque", "1880-1925", "Sargent, Sorolla",
           "Long confident flat strokes on a toned ground, loaded highlights last."}, allaPrima},
-        {{"pastel", "Pastel", "Impressionist pastel", "1870-1900", "Degas, Cassatt",
+        {{"pastel", "Dry pastel", "Impressionist pastel", "1870-1900", "Degas, Cassatt",
           "Chalk catching only the paper's tooth, hatched and cross-hatched."}, pastel},
     };
     return e;
@@ -656,6 +658,69 @@ void apply(int index, float scale, TuningParams& p, RenderConfig& cfg, StylePara
     }
     e[size_t(index)].fn(std::max(scale, 0.1f), p, cfg, st);
     st.seed = float(index);
+}
+
+void applyBrushTexture(int index, StyleParams& st) {
+    const bool classic = index <= 0 || index >= int(entries().size());
+    TuningParams p;
+    RenderConfig cfg;
+    StyleParams recipe;
+    if (!classic) apply(index, 1.f, p, cfg, recipe);
+    // Flat historical recipes paint strokes here too. A return to the
+    // classic tile brush keeps independently chosen colour and finish values.
+    if (!classic) st.enabled = 1.f;
+    st.brushModel = classic ? 0.f : 1.f;
+    st.strokesOff = 0.f;
+#define BRUSH_FIELD(name) st.name = recipe.name
+    BRUSH_FIELD(widthScale); BRUSH_FIELD(tip); BRUSH_FIELD(capFrac);
+    BRUSH_FIELD(taperStart); BRUSH_FIELD(taperEnd); BRUSH_FIELD(tipMin);
+    BRUSH_FIELD(swell); BRUSH_FIELD(bristles); BRUSH_FIELD(bristleClump);
+    BRUSH_FIELD(bristleContrast); BRUSH_FIELD(bristleAlpha);
+    BRUSH_FIELD(colorJitter); BRUSH_FIELD(load); BRUSH_FIELD(dryout);
+    BRUSH_FIELD(dryTooth); BRUSH_FIELD(streakNoise); BRUSH_FIELD(streakLen);
+    BRUSH_FIELD(edgeRough); BRUSH_FIELD(edgeSoft); BRUSH_FIELD(endJag);
+    BRUSH_FIELD(pickup); BRUSH_FIELD(smear); BRUSH_FIELD(smearLen);
+    BRUSH_FIELD(impasto); BRUSH_FIELD(ridge); BRUSH_FIELD(startBlob);
+    BRUSH_FIELD(flatten); BRUSH_FIELD(groove); BRUSH_FIELD(groovePx);
+    BRUSH_FIELD(grooveColor);
+#undef BRUSH_FIELD
+    // The source recipes for these eras were flat compositing effects, so
+    // define a usable mark when borrowing their material as a brush texture.
+    const std::string key = classic ? "none" : entries()[size_t(index)].info.key;
+    if (key == "ukiyoe") {
+        st.tip = 1.f; st.tipMin = 0.95f; st.bristles = 0.f;
+        st.edgeSoft = 0.12f; st.edgeRough = 0.02f; st.impasto = 0.02f;
+    } else if (key == "watercolor") {
+        st.tip = 5.f; st.bristles = 2.f; st.load = 0.35f;
+        st.edgeSoft = 1.8f; st.edgeRough = 0.12f; st.impasto = 0.f;
+    } else if (key == "pop") {
+        st.tip = 0.f; st.bristles = 0.f; st.edgeSoft = 0.15f;
+        st.edgeRough = 0.f; st.impasto = 0.f;
+    } else if (key == "hockney") {
+        st.tip = 1.f; st.bristles = 1.f; st.edgeSoft = 0.25f;
+        st.edgeRough = 0.02f; st.impasto = 0.08f;
+    } else if (key == "folk") {
+        st.tip = 3.f; st.bristles = 5.f; st.dryout = 0.3f;
+        st.edgeRough = 0.18f; st.impasto = 0.08f;
+    }
+    st.seed = classic ? 0.f : float(index);
+    if (classic) {
+        if (st.finish == 0.5f) st.finish = 0.f;
+        // Compare only the independent look portion. Brush mark fields were
+        // reset above; the rest should survive a brush-family change.
+        const StyleParams defaults;
+        const auto* current = reinterpret_cast<const unsigned char*>(&st);
+        const auto* baseline = reinterpret_cast<const unsigned char*>(&defaults);
+        const size_t begin = offsetof(StyleParams, fieldMode);
+        const size_t seed = offsetof(StyleParams, seed);
+        const size_t tail = offsetof(StyleParams, flatMottle);
+        const bool lookChanged =
+            std::memcmp(current + begin, baseline + begin, seed - begin) != 0 ||
+            std::memcmp(current + tail, baseline + tail, sizeof(StyleParams) - tail) != 0;
+        st.enabled = lookChanged ? 1.f : 0.f;
+    } else if (st.finish <= 0.f) {
+        st.finish = 0.5f; // brush relief only; no aging or ground effects
+    }
 }
 
 } // namespace styles

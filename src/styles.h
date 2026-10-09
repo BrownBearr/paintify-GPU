@@ -28,6 +28,9 @@ int indexOf(const std::string& key);   // -1 when unknown
 // image about 1000 px on its long side, and autoScale() picks it from the size.
 void apply(int index, float scale, TuningParams& p, RenderConfig& cfg, StyleParams& st);
 
+// Selects only brush texture; placement, path, colour and finish stay editable.
+void applyBrushTexture(int index, StyleParams& st);
+
 // "none": the classic rendering pipeline.
 void clear(StyleParams& st, RenderConfig& cfg);
 

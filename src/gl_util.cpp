@@ -3,6 +3,10 @@
 #include <cstdio>
 #include <cstring>
 #include <sys/stat.h>
+#include <filesystem>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace glu {
 
@@ -26,8 +30,21 @@ static int64_t fileMTime(const std::string& path) {
     return static_cast<int64_t>(st.st_mtime);
 }
 
-// Shaders stay beside the source tree so F5 can reload them.
+// Portable releases keep shaders beside the executable. The source-tree
+// fallback keeps development hot reload available before packaging.
 static std::string shaderDir() {
+#ifdef _WIN32
+    char exe[MAX_PATH] = {};
+    if (GetModuleFileNameA(nullptr, exe, MAX_PATH)) {
+        const auto exeDir = std::filesystem::path(exe).parent_path();
+        const auto source = std::filesystem::path(SBR_ROOT_DIR) / "shaders";
+        // In a CMake build tree F5 reads the editable source shaders.
+        if (std::filesystem::exists(exeDir / "CMakeCache.txt") &&
+            std::filesystem::exists(source)) return source.string() + "/";
+        const auto portable = exeDir / "shaders";
+        if (std::filesystem::exists(portable)) return portable.string() + "/";
+    }
+#endif
     return std::string(SBR_ROOT_DIR) + "/shaders/";
 }
 

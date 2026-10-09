@@ -23,7 +23,7 @@ float surf(ivec2 q) {
     float h = texelFetch(uHeight, q, 0).r;
     float t = texelFetch(uTooth, q, 0).r;
     // thick paint buries the weave; thin paint lets it telegraph through
-    return h * ST_IMPASTO_LIGHT + ST_WEAVE * t * exp(-1.5 * h);
+    return h * ST_IMPASTO_LIGHT + (ST_FINISH > 0.9 ? ST_WEAVE * t * exp(-1.5 * h) : 0.0);
 }
 
 float crackNetwork(vec2 p) {
@@ -61,6 +61,8 @@ void main() {
     float gloss = clamp(texelFetch(uHeight, px, 0).r * 2.0, 0.15, 1.0);
     rgb = clamp(rgb * shade + ST_SPECULAR * spec * gloss, 0.0, 1.0);
 
+    // 0.5 means brush relief only. Artistic finishing remains independent.
+    if (ST_FINISH > 0.9) {
     if (ST_FINAL_SAT != 1.0 || ST_FINAL_CONTRAST != 1.0) {
         float l = luma(rgb);
         rgb = clamp(vec3(l) + (rgb - l) * ST_FINAL_SAT, 0.0, 1.0);
@@ -87,6 +89,7 @@ void main() {
         float g = (hash01(uint(px.x) * 73856093u ^ uint(px.y) * 19349663u) +
                    hash01(uint(px.x) * 83492791u ^ uint(px.y) * 2654435761u)) - 1.0;
         rgb += ST_GRAIN * 1.7 * g;
+    }
     }
     imageStore(uOut, px, vec4(clamp(rgb, 0.0, 1.0), 1.0));
 }

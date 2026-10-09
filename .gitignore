@@ -12,3 +12,6 @@ imgui.ini
 build.log
 docs/brushkit/*.mp4
 __pycache__/
+
+build-review/
+dist/

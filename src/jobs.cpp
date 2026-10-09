@@ -29,7 +29,7 @@ bool report(const ProgressFn& fn, const Progress& p) {
 
 } // namespace
 
-void writeImage(const std::string& path, const std::vector<unsigned char>& px,
+bool writeImage(const std::string& path, const std::vector<unsigned char>& px,
                 int w, int h, const std::string& format) {
     int ok = 0;
     if (format == "jpg" || format == "jpeg")
@@ -41,6 +41,7 @@ void writeImage(const std::string& path, const std::vector<unsigned char>& px,
     else
         ok = stbi_write_png(path.c_str(), w, h, 4, px.data(), w * 4);
     if (!ok) fprintf(stderr, "failed to write %s\n", path.c_str());
+    return ok != 0;
 }
 
 Result runVideo(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
@@ -128,6 +129,7 @@ Result runBatch(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
 
     std::error_code ec;
     fs::create_directories(spec.outDir, ec);
+    if (ec) { r.error = "cannot create output folder " + spec.outDir + ": " + ec.message(); return r; }
 
     double totalMs = 0.0;
     for (const std::string& f : files) {
@@ -147,8 +149,11 @@ Result runBatch(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
 
         const fs::path out = fs::path(spec.outDir) /
             (fs::path(f).stem().string() + spec.suffix + "." + spec.format);
-        writeImage(out.string(), pipe.readCanvas(), pipe.width(), pipe.height(),
-                   spec.format);
+        if (!writeImage(out.string(), pipe.readCanvas(), pipe.width(), pipe.height(),
+                        spec.format)) {
+            r.error = "could not write " + out.string();
+            break;
+        }
 
         totalMs += pipe.msTotal();
         ++r.done;
@@ -166,8 +171,8 @@ Result runBatch(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
 
     r.wallSeconds = glfwGetTime() - t0;
     r.gpuMsMean = r.done ? totalMs / double(r.done) : 0.0;
-    r.ok = r.done > 0;
-    if (!r.ok && r.error.empty()) r.error = "every image failed to load";
+    r.ok = r.done > 0 && r.error.empty() && !r.cancelled;
+    if (!r.ok && r.error.empty() && !r.cancelled) r.error = "every image failed to load";
     return r;
 }
 
@@ -184,11 +189,10 @@ Result runFrames(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
     }
     std::error_code ec;
     fs::create_directories(spec.outDir, ec);
+    if (ec) { r.error = "cannot create output folder " + spec.outDir + ": " + ec.message(); return r; }
 
-    // Temporal coherence needs a threshold to be worth anything; pick the
-    // web UI's mid slider value if the caller did not set one.
-    if (params.frameDiffThreshold <= 0.f) params.frameDiffThreshold = 12.f;
-
+    // The caller chooses coherence; an explicit threshold of zero disables it.
+    const bool temporal = params.frameDiffThreshold > 0.f;
     pipe.resetTemporal();
     double totalMs = 0.0;
 
@@ -199,11 +203,14 @@ Result runFrames(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
         pipe.setSource(px, w, h);
         stbi_image_free(px);
 
-        renderOne(pipe, params, cfg, /*temporal=*/true);
+        renderOne(pipe, params, cfg, temporal);
 
         char name[512];
         snprintf(name, sizeof(name), "%s/frame_%05d.png", spec.outDir.c_str(), int(i));
-        writeImage(name, pipe.readCanvas(), pipe.width(), pipe.height(), "png");
+        if (!writeImage(name, pipe.readCanvas(), pipe.width(), pipe.height(), "png")) {
+            r.error = std::string("could not write ") + name;
+            break;
+        }
 
         totalMs += pipe.msTotal();
         ++r.done;
@@ -220,8 +227,8 @@ Result runFrames(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
 
     r.wallSeconds = glfwGetTime() - t0;
     r.gpuMsMean = r.done ? totalMs / double(r.done) : 0.0;
-    r.ok = r.done > 0;
-    if (!r.ok && r.error.empty()) r.error = "no frames could be loaded";
+    r.ok = r.done > 0 && r.error.empty() && !r.cancelled;
+    if (!r.ok && r.error.empty() && !r.cancelled) r.error = "no frames could be loaded";
     return r;
 }
 

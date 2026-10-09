@@ -188,7 +188,13 @@ bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
         std::string value;
         if (!(ls >> value)) continue;
 
-        if (key == "version") continue;
+        if (key == "version") {
+            if (value != "1") {
+                if (err) *err = "unsupported Brushkit settings version " + value;
+                return false;
+            }
+            continue;
+        }
         if (key == "style") {
             if (styleKey) *styleKey = value;
             continue;

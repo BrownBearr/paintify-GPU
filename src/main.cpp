@@ -30,30 +30,17 @@
 
 namespace {
 
-// ── Presets ────────────────────────────────────────────────────────────────
-// The Hertzmann presets from PainterlyImageCreatorWeb's main.js PRESETS, value
-// for value, so a look chosen in the web UI can be reproduced here by name.
-// Fields the web preset leaves unset fall back to its PRESET_DEFAULTS, which is
-// why several have brushTexture 0. `detail` is the one entry not from the web.
-struct Preset {
-    const char* name;
-    const char* radii;
-    float maxLen, minLen, curvature, threshold, gridFactor, opacity;
-    float hue, sat, val;
-    float brushTexture;
-    Underpaint underpaint;
-};
+// ── Radius sets ───────────────────────────────────────────────────────────
+// These choices only set the coarse-to-fine radii. All other controls stay
+// editable and keep their current values.
+struct Preset { const char* name; const char* radii; };
 
 const Preset kPresets[] = {
-    // name           radii       maxL minL curv  thr   grid   op     hue    sat    val    tex    underpaint
-    {"impressionist", "8,4,2",    16,  4,   1.0f, 50.f, 1.0f,  0.90f, 0.05f, 0.10f, 0.10f, 0.45f, Underpaint::Blur},
-    {"expressionist", "12,6,3",   28,  8,   1.0f, 40.f, 0.9f,  0.95f, 0.15f, 0.20f, 0.15f, 0.60f, Underpaint::Blur},
-    // 'average' matters here: with a blur underpaint the radius-4 layer paints
-    // the colour that is already on the canvas and the dabs never show.
-    {"pointillist",   "4,2",       3,  1,   0.0f, 30.f, 0.75f, 0.85f, 0.10f, 0.15f, 0.10f, 0.00f, Underpaint::Average},
-    {"wash",          "20,10",    32, 10,   0.7f, 80.f, 1.5f,  0.40f, 0.20f, 0.30f, 0.20f, 0.00f, Underpaint::Blur},
-    // A detail preset: a tight threshold and a fine finest layer.
-    {"detail",        "6,3,1.5",  10,  4,   1.0f, 20.f, 1.0f,  1.00f, 0.00f, 0.00f, 0.00f, 0.50f, Underpaint::Blur},
+    {"Balanced", "8,4,2"},
+    {"Broad", "12,6,3"},
+    {"Fine", "6,3,1.5"},
+    {"Large wash", "20,10"},
+    {"Tiny marks", "4,2"},
 };
 constexpr int kPresetCount = int(sizeof(kPresets) / sizeof(kPresets[0]));
 
@@ -62,20 +49,9 @@ constexpr int kPresetCount = int(sizeof(kPresets) / sizeof(kPresets[0]));
 using paramfile::parseRadii;
 using paramfile::radiiToString;
 
-void applyPreset(const Preset& pr, TuningParams& p, RenderConfig& cfg, std::string* radiiText) {
+void applyPreset(const Preset& pr, TuningParams&, RenderConfig& cfg, std::string* radiiText) {
     cfg.radii = parseRadii(pr.radii);
-    cfg.underpaint = pr.underpaint;
     if (radiiText) *radiiText = radiiToString(cfg.radii);
-    p.maxStrokeLength = pr.maxLen;
-    p.minStrokeLength = pr.minLen;
-    p.curvature = pr.curvature;
-    p.threshold = pr.threshold;
-    p.gridFactor = pr.gridFactor;
-    p.opacity = pr.opacity;
-    p.jitterHue = pr.hue;
-    p.jitterSat = pr.sat;
-    p.jitterVal = pr.val;
-    p.texStrength = pr.brushTexture;
 }
 
 struct Options {
@@ -120,29 +96,29 @@ struct Options {
     bool flowLog = false;
     bool jitterPerFrame = false;
     // brushkit
-    std::string style;              // empty / "none" = classic renderer
-    float styleScale = NAN;         // NaN = from the image size
+    std::string style;              // empty / "none" = classic tile brush
+    float styleScale = NAN;         // NaN = width multiplier 1
     bool listStyles = false;
     bool play = false;              // interactive: start playing a --in video
 };
 
 void usage() {
     printf(
-        "Brushkit -- GPU painting styles and classic rendering\n\n"
-        " Styles (brushkit)\n"
-        "  --style <name>          paint in a brushkit style (--list-styles);\n"
-        "                          'none' selects the classic renderer\n"
-        "  --style-scale <f>       stroke size; default follows the image size\n"
-        "                          (1.0 at a 1000 px long side)\n"
-        "  --list-styles           list the styles and exit\n"
+        "Brushkit -- GPU painting with editable historical brush textures\n\n"
+        " Brush textures\n"
+        "  --style <name>          choose an era brush texture (--list-styles);\n"
+        "                          'none' selects the classic tile brush\n"
+        "  --style-scale <f>       procedural brush width multiplier; default 1\n"
+
+        "  --list-styles           list the brush textures and exit\n"
         "  --play                  with --in <video>: paint it in realtime in the\n"
         "                          window (also the Play button)\n"
         "  --in <path>            source image (omitted: synthetic subject)\n"
         "  --out <path>            output PNG for --headless and the S key\n"
         "  --headless              render and exit, no window\n"
-        "  --preset <name>         impressionist | expressionist | pointillist |\n"
-        "                          wash   (the web's, value for value)\n"
-        "                          detail (this project's own)\n"
+        "  --preset <name>         radius sets: Balanced | Broad | Fine |\n"
+        "                          Large wash | Tiny marks (legacy names accepted)\n"
+
         "  --save-params <file>    write the fully resolved parameters and carry\n"
         "                          on, so a preset plus a few flags becomes an\n"
         "                          editable file to tweak by hand\n"
@@ -488,11 +464,15 @@ void acceptPaths(const std::vector<std::string>& paths, Pipeline& pipe,
             gui.statusIsError = true;
             return;
         }
+        // Validate the preview before replacing the current input.
+        if (!loadSource(pipe, files.front(), &note)) {
+            gui.status = "could not open " + files.front();
+            gui.statusIsError = true;
+            return;
+        }
         gui.kind = InputKind::Images;
         gui.queue = files;
         gui.inputPath.clear();
-        // Show the first one so the sliders have something to act on.
-        loadSource(pipe, files.front(), &note);
         pipe.resetTemporal();
         gui.status = std::to_string(files.size()) + " images queued";
         gui.statusIsError = false;
@@ -529,10 +509,14 @@ void acceptPaths(const std::vector<std::string>& paths, Pipeline& pipe,
         return;
     }
 
+    if (!loadSource(pipe, p, &note)) {
+        gui.status = "could not open " + p;
+        gui.statusIsError = true;
+        return;
+    }
     gui.kind = InputKind::Image;
     gui.inputPath = p;
     gui.queue.clear();
-    loadSource(pipe, p, &note);
     pipe.resetTemporal();
     if (gui.outDir.empty() || gui.outDir == "frames_out")
         gui.outDir = fs::path(p).parent_path().string();
@@ -698,7 +682,7 @@ int main(int argc, char** argv) {
 
     if (opt.listStyles) {
         for (const styles::Info& s : styles::list())
-            printf("%-14s %-24s %-24s %-10s %s\n", s.key, s.name, s.era, s.years, s.summary);
+            printf("%-14s %-24s %-24s %s\n", s.key, s.name, s.era, s.years);
         return 0;
     }
     if (!glfwInit()) { fprintf(stderr, "glfwInit failed\n"); return 1; }
@@ -747,7 +731,12 @@ int main(int argc, char** argv) {
     if (!opt.preset.empty()) {
         bool found = false;
         for (int i = 0; i < kPresetCount; ++i) {
-            if (opt.preset == kPresets[i].name) {
+            if (opt.preset == kPresets[i].name ||
+                (i == 0 && opt.preset == "impressionist") ||
+                (i == 1 && opt.preset == "expressionist") ||
+                (i == 2 && opt.preset == "detail") ||
+                (i == 3 && opt.preset == "wash") ||
+                (i == 4 && opt.preset == "pointillist")) {
                 presetIdx = i;
                 applyPreset(kPresets[i], params, cfg, &radiiText);
                 found = true;
@@ -777,13 +766,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // ── brushkit style ────────────────────────────────────────────────────
-    // A style replaces the preset's look, so it goes after the preset and a
-    // params file; explicit flags are re-applied after it and still win. Its
-    // stroke sizes follow the image unless --style-scale fixes them, so the
-    // style is (re)applied whenever the working size is known or changes.
-    // A params file that carries a whole style block is used as saved (its
-    // sizes are already baked in), unless --style asks for another style.
+    // ── Brush texture ─────────────────────────────────────────────────────
+    // A named era changes the stroke mark only. Layout and paint controls
+    // retain their values; saved legacy looks keep their full settings.
     int styleIdx = 0;
     const bool keepFileStyle = fileStyle && opt.style.empty();
     if (!opt.style.empty()) {
@@ -795,34 +780,21 @@ int main(int argc, char** argv) {
     } else if (keepFileStyle) {
         styleIdx = std::max(0, styles::indexOf(fileStyleKey));
     }
-    auto applyStyleFor = [&](int w, int h, TuningParams& tp, RenderConfig& rc) {
+    auto applyStyleFor = [&](TuningParams& tp, RenderConfig& rc) {
         if (keepFileStyle) {
             // as saved
         } else if (styleIdx > 0) {
-            const float sc = std::isnan(opt.styleScale)
-                           ? styles::autoScale(w, h) : opt.styleScale;
-            styles::apply(styleIdx, sc, tp, rc, styleP);
+            const float sc = std::isnan(opt.styleScale) ? 1.f : opt.styleScale;
+            styles::applyBrushTexture(styleIdx, styleP);
+            styleP.widthScale *= sc;
         } else {
-            styles::clear(styleP, rc);
+            styles::applyBrushTexture(0, styleP);
         }
         applyOverrides(opt, tp, rc, &radiiText);
         pipe.setStyle(styleP);
     };
-    {
-        // The size the style should be scaled for: the video's, the first
-        // batch image's, or the loaded still's.
-        int sw = pipe.width(), sh = pipe.height();
-        if (!opt.videoIn.empty()) {
-            media::VideoInfo vi;
-            std::string perr;
-            if (media::probe(opt.videoIn, &vi, &perr)) { sw = vi.width; sh = vi.height; }
-        } else if (!opt.batchDir.empty()) {
-            const std::vector<std::string> files = media::listImages(opt.batchDir);
-            int n = 0;
-            if (!files.empty()) stbi_info(files.front().c_str(), &sw, &sh, &n);
-        }
-        applyStyleFor(sw, sh, params, cfg);
-    }
+    // Radius sets remain independent from the historical brush texture.
+    applyStyleFor(params, cfg);
 
     if (!opt.saveParamsFile.empty()) {
         std::string perr;
@@ -922,7 +894,7 @@ int main(int argc, char** argv) {
                 return true;
             });
 
-        if (!res.ok && res.done == 0) {
+        if (!res.ok && !res.cancelled) {
             fprintf(stderr, "%s\n", res.error.c_str());
         } else {
             printf("%lld painted, %lld skipped, %.1f s wall, GPU %.2f ms/image\n",
@@ -944,6 +916,8 @@ int main(int argc, char** argv) {
         spec.dir = opt.framesDir;
         spec.outDir = opt.outDir;
 
+        if (std::isnan(opt.temporalDiff) && params.frameDiffThreshold <= 0.f)
+            params.frameDiffThreshold = 12.f;
         const jobs::Result res = jobs::runFrames(
             pipe, params, cfg, spec, [&](const jobs::Progress& p) {
                 printf("  %lld/%lld  drawn %u  gpu %.2f ms\n",
@@ -987,6 +961,29 @@ int main(int argc, char** argv) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
+    ImGuiStyle& ui = ImGui::GetStyle();
+    ui.WindowRounding = 0.f;
+    ui.FrameRounding = 5.f;
+    ui.GrabRounding = 5.f;
+    ui.ChildRounding = 5.f;
+    ui.WindowPadding = ImVec2(20.f, 18.f);
+    ui.FramePadding = ImVec2(10.f, 7.f);
+    ui.ItemSpacing = ImVec2(9.f, 9.f);
+    ui.IndentSpacing = 16.f;
+    ui.Colors[ImGuiCol_WindowBg] = ImVec4(0.075f, 0.085f, 0.098f, 1.f);
+    ui.Colors[ImGuiCol_FrameBg] = ImVec4(0.15f, 0.17f, 0.19f, 1.f);
+    ui.Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.20f, 0.23f, 0.25f, 1.f);
+    ui.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.22f, 0.23f, 1.f);
+    ui.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.26f, 0.31f, 0.31f, 1.f);
+    ui.Colors[ImGuiCol_Header] = ImVec4(0.18f, 0.22f, 0.23f, 1.f);
+    ui.Colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.30f, 0.30f, 1.f);
+    ui.Colors[ImGuiCol_CheckMark] = ImVec4(0.86f, 0.65f, 0.39f, 1.f);
+    ui.Colors[ImGuiCol_SliderGrab] = ImVec4(0.86f, 0.65f, 0.39f, 1.f);
+    ui.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.98f, 0.77f, 0.48f, 1.f);
+    ui.Colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.28f, 0.29f, 1.f);
+    ui.Colors[ImGuiCol_TextDisabled] = ImVec4(0.54f, 0.59f, 0.60f, 1.f);
+    if (std::filesystem::exists("C:/Windows/Fonts/segoeui.ttf"))
+        ImGui::GetIO().Fonts->AddFontFromFileTTF("C:/Windows/Fonts/segoeui.ttf", 18.f);
     ImGui_ImplGlfw_InitForOpenGL(win, true);
     ImGui_ImplOpenGL3_Init("#version 460");
 
@@ -999,7 +996,8 @@ int main(int argc, char** argv) {
         for (int i = 0; i < count; ++i) droppedPaths.push_back(paths[i]);
     });
 
-    bool temporal = false;
+    bool temporal = params.frameDiffThreshold > 0.f;
+    bool temporalChoiceMade = false;
     bool tensorOn = params.tensorSigma > 0.f;
     ViewMode view = ViewMode::Split;   // start split so the input is visible
     const char* kViewNames[] = {"painted", "source", "split"};
@@ -1028,27 +1026,21 @@ int main(int argc, char** argv) {
     // --- brushkit style state ----------------------------------------------
     int guiStyle = styleIdx;
     bool customLookActive = keepFileStyle;
-    bool styleAutoScale = !customLookActive && std::isnan(opt.styleScale);
-    auto autoSize = [&]() {
-        return styles::autoScale(pipe.width(), pipe.height());
-    };
-    float styleScaleVal = std::isnan(opt.styleScale) ? autoSize() : opt.styleScale;
-    int styledW = pipe.width(), styledH = pipe.height();
+    const float styleScaleVal = std::isnan(opt.styleScale) ? 1.f : opt.styleScale;
     // Re-derives every parameter block from the chosen style, at the current
     // stroke size, and resyncs the widgets that mirror them.
     auto restyle = [&]() {
         customLookActive = false;
-        const float sc = styleAutoScale ? autoSize() : styleScaleVal;
-        if (styleAutoScale) styleScaleVal = sc;
-        if (guiStyle > 0) styles::apply(guiStyle, sc, params, cfg, styleP);
-        else styles::clear(styleP, cfg);
+        const float sc = styleScaleVal;
+        if (guiStyle > 0) {
+            styles::applyBrushTexture(guiStyle, styleP);
+            styleP.widthScale *= sc;
+        } else styles::applyBrushTexture(0, styleP);
         pipe.setStyle(styleP);
         pipe.resetTemporal();
         radiiText = radiiToString(cfg.radii);
         snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
         tensorOn = params.tensorSigma > 0.f;
-        styledW = pipe.width();
-        styledH = pipe.height();
     };
 
     // --- realtime playback of a loaded video --------------------------------
@@ -1069,9 +1061,11 @@ int main(int argc, char** argv) {
         playCount = playFpsCount = 0;
         pipe.resetTemporal();
         if (!playing) { gui.status = perr; gui.statusIsError = true; return false; }
-        temporal = true;
-        if (params.frameDiffThreshold <= 0.f) params.frameDiffThreshold = 12.f;
-        if (cfg.flowLevels <= 0) cfg.flowLevels = 4;
+        if (!temporalChoiceMade) {
+            temporal = true;
+            if (params.frameDiffThreshold <= 0.f) params.frameDiffThreshold = 12.f;
+            if (cfg.flowLevels <= 0) cfg.flowLevels = 4;
+        }
         return true;
     };
     if (opt.play && gui.kind == InputKind::Video && !startPlay())
@@ -1115,11 +1109,6 @@ int main(int argc, char** argv) {
             playing = false;
             player.close();
         }
-        // A new input size rescales a style's strokes.
-        if (guiStyle > 0 && styleAutoScale && !customLookActive &&
-            (pipe.width() != styledW || pipe.height() != styledH))
-            restyle();
-
         // A drop can be an image, a video, or a folder; each means something
         // different, so classify before deciding what to do with it.
         if (!droppedPaths.empty()) {
@@ -1143,25 +1132,52 @@ int main(int argc, char** argv) {
 
         const double t0 = glfwGetTime();
         params.tensorSigma = tensorOn ? std::max(0.1f, params.tensorSigma) : 0.f;
-        pipe.render(params, cfg, temporal || playing);
+        pipe.render(params, cfg, playing && temporal);
         params.frame += 1.f;
 
         int fbW = 0, fbH = 0;
         glfwGetFramebufferSize(win, &fbW, &fbH);
         // Reserve the left column for the panel so the image is never hidden
         // behind it -- the whole point of the split view is seeing the input.
-        const int panelW = 400;
+        const int panelW = 440;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
         ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-        ImGui::SetNextWindowSize(ImVec2(400, float(fbH)), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(float(panelW), float(fbH)), ImGuiCond_Always);
         ImGui::Begin("brushkit", nullptr,
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_NoCollapse);
-        ImGui::PushItemWidth(-165.0f);   // leave room for the longest label
+                     ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
+        ImGui::PushItemWidth(-175.0f);
+        bool settingsChanged = false;
+        // Stacked labels give every adjustment the full panel width.
+        auto sliderFloat = [&](const char* label, float* value, float low, float high,
+                              const char* format = "%.3f") {
+            ImGui::TextDisabled("%s", label);
+            ImGui::PushID(value);
+            ImGui::PushItemWidth(-1.f);
+            const bool changed = ImGui::SliderFloat("##value", value, low, high, format);
+            ImGui::PopItemWidth();
+            ImGui::PopID();
+            settingsChanged |= changed;
+            return changed;
+        };
+        auto sliderInt = [&](const char* label, int* value, int low, int high) {
+            ImGui::TextDisabled("%s", label);
+            ImGui::PushID(value);
+            ImGui::PushItemWidth(-1.f);
+            const bool changed = ImGui::SliderInt("##value", value, low, high);
+            ImGui::PopItemWidth();
+            ImGui::PopID();
+            settingsChanged |= changed;
+            return changed;
+        };
+        ImGui::TextColored(ImVec4(0.91f, 0.73f, 0.48f, 1.f), "BRUSHKIT");
+        ImGui::SameLine();
+        ImGui::TextDisabled(" / GPU painting studio");
+        ImGui::TextDisabled("Choose a mark, shape its path, then tune the paint.");
 
         // ── Input ──────────────────────────────────────────────────────
         static const std::vector<filedialog::Filter> kImageFilter = {
@@ -1169,7 +1185,7 @@ int main(int argc, char** argv) {
         static const std::vector<filedialog::Filter> kVideoFilter = {
             {"Video", "*.mp4;*.mov;*.mkv;*.avi;*.webm;*.m4v;*.wmv"}};
 
-        ImGui::TextDisabled("INPUT");
+        ImGui::TextDisabled("00  SOURCE");
         if (ImGui::Button("Open image...")) {
             const std::string p = filedialog::openFile("Choose an image", kImageFilter);
             if (!p.empty()) acceptPaths({p}, pipe, gui, sourceNote);
@@ -1212,7 +1228,7 @@ int main(int argc, char** argv) {
             // Scrub on release rather than on drag: each move would otherwise
             // spawn an ffmpeg seek per frame of UI.
             float at = float(gui.previewAt);
-            if (ImGui::SliderFloat("preview at", &at, 0.0f, float(std::max(dur, 0.1)), "%.2f s"))
+            if (sliderFloat("preview at", &at, 0.0f, float(std::max(dur, 0.1)), "%.2f s"))
                 gui.previewAt = at;
             if (ImGui::IsItemDeactivatedAfterEdit()) gui.previewRequested = gui.previewAt;
 
@@ -1230,13 +1246,307 @@ int main(int argc, char** argv) {
 
         ImGui::Separator();
         int vi = (int)view;
-        if (ImGui::Combo("view", &vi, kViewNames, 3)) view = ViewMode(vi);
+        ImGui::TextDisabled("CANVAS VIEW");
+        ImGui::SetNextItemWidth(-1.f);
+        if (ImGui::Combo("##view", &vi, kViewNames, 3)) view = ViewMode(vi);
         if (view == ViewMode::Split)
             ImGui::TextDisabled("left = input, right = painted; drag the divider");
 
+        if (ImGui::BeginTabBar("Studio")) {
+        if (ImGui::BeginTabItem("Brush")) {
+        ImGui::BeginChild("##BrushControls", ImVec2(0.f, -112.f), false);
+        // ── brushkit style ─────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::TextDisabled("01  BRUSH TEXTURE");
+        {
+            const std::vector<styles::Info>& sl = styles::list();
+            ImGui::TextDisabled("BRUSH MARK");
+            ImGui::SetNextItemWidth(-1.f);
+            if (ImGui::BeginCombo("##era brush", sl[size_t(guiStyle)].name)) {
+                for (int i = 0; i < int(sl.size()); ++i) {
+                    char label[200];
+                    snprintf(label, sizeof(label), "%s  -  %s %s", sl[size_t(i)].name,
+                             sl[size_t(i)].era, sl[size_t(i)].years);
+                    if (ImGui::Selectable(label, i == guiStyle)) {
+                        if (customLookActive) {
+                            cfg.layerSpecs.clear();
+                            styleP = StyleParams{};
+                        }
+                        guiStyle = i;
+                        restyle();
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::TextDisabled("Changes the mark only: tip, bristles, load and edges.");
+            if (guiStyle > 0)
+                ImGui::TextWrapped("Inspired by %s. %s", sl[size_t(guiStyle)].era,
+                                   sl[size_t(guiStyle)].artists);
+            else
+                ImGui::TextDisabled("Original tile brush; tune its texture below.");
+            if (guiStyle > 0) {
+                if (customLookActive)
+                    ImGui::TextDisabled("A new brush clears legacy artistic effects.");
+                if (ImGui::Button("Reset brush texture")) restyle();
+                StyleParams& s = styleP;
+                if (ImGui::CollapsingHeader("Brush mark controls", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    sliderFloat("width x", &s.widthScale, 0.3f, 2.5f);
+                    sliderFloat("bristles", &s.bristles, 0.f, 60.f, "%.0f");
+                    sliderFloat("bristle clump", &s.bristleClump, 0.f, 1.f);
+                    sliderFloat("bristle streaks", &s.bristleContrast, 0.f, 1.f);
+                    sliderFloat("paint load", &s.load, 0.1f, 1.f);
+                    sliderFloat("dry out", &s.dryout, 0.f, 1.f);
+                    sliderFloat("dry on tooth", &s.dryTooth, 0.f, 1.f);
+                    sliderFloat("edge rough", &s.edgeRough, 0.f, 0.6f);
+                    sliderFloat("end jag", &s.endJag, 0.f, 1.f);
+                    sliderFloat("impasto", &s.impasto, 0.f, 2.f);
+                    sliderFloat("edge ridge", &s.ridge, 0.f, 1.f);
+                    sliderFloat("grooves", &s.groove, 0.f, 2.f);
+                    sliderFloat("wet pickup", &s.pickup, 0.f, 1.f);
+                    sliderFloat("smear", &s.smear, 0.f, 1.f);
+                }
+                pipe.setStyle(s);
+            }
+        }
+
+        if (styleP.brushModel <= 0.5f) {
+        ImGui::Separator();
+        ImGui::TextDisabled("CLASSIC TILE BRUSH");
+        sliderFloat("tile texture", &params.texStrength, 0.f, 1.f);
+        if (params.texStrength > 0.f) {
+            if (sliderFloat("bristle density", &cfg.bristleDensity, 2.f, 30.f))
+                pipe.buildBrushTiles(cfg.radii, cfg.bristleDensity);
+            sliderFloat("tip taper", &params.texTaper, 0.f, 1.f);
+            sliderFloat("dry brush", &params.dryBrush, 0.f, 1.f);
+        }
+
+        }
+
+        ImGui::Separator();
+        ImGui::TextDisabled("02  STROKE SIZE");
+        ImGui::TextDisabled("Changes radii only. Path, paint and colour stay as set.");
+        ImGui::TextDisabled("RADIUS SET");
+        ImGui::SetNextItemWidth(-1.f);
+        if (ImGui::Combo("##size preset", &presetIdx,
+                         [](void*, int i, const char** out) {
+                             *out = kPresets[i].name; return true;
+                         }, nullptr, kPresetCount)) {
+            applyPreset(kPresets[presetIdx], params, cfg, &radiiText);
+            cfg.layerSpecs.clear();
+            snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
+            tensorOn = params.tensorSigma > 0.f;
+        }
+
+        ImGui::TextDisabled("CUSTOM RADII");
+        ImGui::SetNextItemWidth(-1.f);
+        if (ImGui::InputText("##brush radii", radiiBuf, sizeof(radiiBuf),
+                             ImGuiInputTextFlags_EnterReturnsTrue)) {
+            cfg.radii = parseRadii(radiiBuf);
+            radiiText = radiiToString(cfg.radii);
+            snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
+        }
+        ImGui::TextDisabled("Coarse to fine in pixels. Press Enter to apply.");
+
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Stroke")) {
+        ImGui::BeginChild("##StrokeControls", ImVec2(0.f, -112.f), false);
+        ImGui::Separator();
+        ImGui::TextDisabled("03  STROKE PLACEMENT AND PATH");
+        if (!cfg.layerSpecs.empty())
+            ImGui::TextColored(ImVec4(0.91f, 0.73f, 0.48f, 1.f),
+                "Saved look has per-layer path overrides. Choose a size preset to clear them.");
+        ImGui::TextDisabled("PLACEMENT");
+        sliderFloat("detail threshold", &params.threshold, 1.f, 150.f, "%.0f");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Lower adds more strokes where paint differs from the source.");
+        sliderFloat("stroke spacing", &params.gridFactor, 0.25f, 2.5f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Grid spacing = brush radius x this value.\nHigher = fewer candidate strokes.");
+        ImGui::TextDisabled("PATH");
+        ImGui::TextDisabled("Length counts steps of about one brush radius.");
+        sliderFloat("max length", &params.maxStrokeLength, 1.f, 32.f, "%.0f");
+        sliderFloat("min length", &params.minStrokeLength, 1.f, 32.f, "%.0f");
+        sliderFloat("curvature", &params.curvature, 0.f, 1.f);
+        sliderFloat("size jitter", &params.sizeJitter, 0.f, 0.6f);
+        sliderFloat("angle jitter", &params.angleJitter, 0.f, 45.f, "%.0f deg");
+        ImGui::Checkbox("structure tensor", &tensorOn);
+        if (tensorOn) sliderFloat("tensor sigma", &params.tensorSigma, 0.5f, 8.f);
+
+        // Edge Tangent Flow. Sits with the flow-field controls because that is
+        // what it refines -- it is a filter on the field, not a stroke setting.
+        sliderInt("etf iterations", &cfg.etfIterations, 0, 8);
+        if (cfg.etfIterations > 0) {
+            sliderFloat("etf radius", &params.etfRadius, 1.f, 12.f, "%.0f px");
+            // The kernel is a disc, so the cost is quadratic in the radius and
+            // linear in both the iterations and the layer count. Worth stating
+            // next to the sliders rather than leaving it to be discovered in
+            // the frame time.
+            ImGui::TextDisabled("edge-aware flow smoothing; cost ~ r^2 x iters");
+        }
+
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Paint")) {
+        ImGui::BeginChild("##PaintControls", ImVec2(0.f, -112.f), false);
+        ImGui::Separator();
+        ImGui::TextDisabled("04  PAINT AND COLOUR");
+        int upi = int(cfg.underpaint);
+        ImGui::TextDisabled("UNDERPAINT");
+        ImGui::SetNextItemWidth(-1.f);
+        if (ImGui::Combo("##underpaint", &upi, kUnderpaintNames, 3))
+            cfg.underpaint = Underpaint(upi);
+
+
+        sliderFloat("opacity", &params.opacity, 0.05f, 1.f);
+        sliderFloat("hue jitter", &params.jitterHue, 0.f, 0.3f);
+        sliderFloat("sat jitter", &params.jitterSat, 0.f, 0.5f);
+        sliderFloat("val jitter", &params.jitterVal, 0.f, 0.5f);
+        sliderFloat("opacity jitter", &params.opacityJitter, 0.f, 0.6f);
+
+        ImGui::Separator();
+        ImGui::TextDisabled("impasto");
+        // The web exposes these as Off / Subtle / Medium / Strong = 0, .15,
+        // .3, .5. Past ~0.6 the height field saturates in dense areas and the
+        // relief lighting clips to its clamps, so the range stops where the
+        // web's does.
+        sliderFloat("height", &params.impastoStrength, 0.f, 0.5f);
+        sliderFloat("relief light", &params.impastoLight, 0.f, 0.5f);
+        if (params.impastoLight > 0.f)
+            sliderFloat("light angle", &params.lightAngle, 0.f, 360.f, "%.0f deg");
+
+        ImGui::Separator();
+        ImGui::TextDisabled("INDEPENDENT LOOK CONTROLS");
+        {
+            StyleParams& s = styleP;
+            bool lookChanged = false;
+                if (ImGui::CollapsingHeader("Field and colour (independent)")) {
+                    const char* kFields[] = {"image flow", "vortex", "patches", "curl", "waves", "constant"};
+                    int fm = int(s.fieldMode + 0.5f);
+                    if (ImGui::Combo("field", &fm, kFields, 6)) {
+                        s.fieldMode = float(fm);
+                        lookChanged = true;
+                    }
+                    lookChanged |= sliderFloat("field mix", &s.fieldMix, 0.f, 1.f);
+                    lookChanged |= sliderFloat("wobble", &s.perturb, 0.f, 1.5f);
+                    if (fm == 1) {
+                        bool av = s.autoVortex > 0.5f;
+                        if (ImGui::Checkbox("vortex follows light", &av)) {
+                            s.autoVortex = av ? 1.f : 0.f;
+                            lookChanged = true;
+                        }
+                        lookChanged |= sliderFloat("spiral", &s.vortexSpiral, -1.5f, 1.5f);
+                        lookChanged |= sliderFloat("vortex radius", &s.vortexRadius, 0.05f, 1.f);
+                    }
+                    if (s.paletteCount > 0.f)
+                        lookChanged |= sliderFloat("palette pull", &s.palettePull, 0.f, 1.f);
+                    lookChanged |= sliderFloat("broken colour L", &s.labJitterL, 0.f, 20.f);
+                    lookChanged |= sliderFloat("broken colour ab", &s.labJitterAB, 0.f, 20.f);
+                    lookChanged |= sliderFloat("saturation", &s.saturation, 0.f, 2.f);
+                    lookChanged |= sliderFloat("warm / cool", &s.warmCool, -1.f, 1.f);
+                }
+                if (ImGui::CollapsingHeader("Surface and effects (independent)")) {
+                    bool tonedGround = s.groundMode > 0.5f;
+                    if (ImGui::Checkbox("Toned ground", &tonedGround)) {
+                        s.groundMode = tonedGround ? 1.f : 0.f;
+                        lookChanged = true;
+                    }
+                    if (tonedGround)
+                        lookChanged |= sliderFloat("lay-in", &s.underOpacity, 0.f, 1.f);
+                    bool finishEnabled = s.finish > 0.9f;
+                    if (ImGui::Checkbox("Finish effects", &finishEnabled)) {
+                        s.finish = finishEnabled ? 1.f
+                                                 : (s.brushModel > 0.5f ? 0.5f : 0.f);
+                        lookChanged = true;
+                    }
+                    if (s.finish > 0.f) {
+                        ImGui::TextDisabled("BRUSH RELIEF");
+                        lookChanged |= sliderFloat("relief", &s.impastoLight, 0.f, 2.f);
+                        lookChanged |= sliderFloat("relief scale", &s.reliefScale, 0.f, 4.f);
+                        lookChanged |= sliderFloat("gloss", &s.specular, 0.f, 0.6f);
+                    }
+                    if (finishEnabled) {
+                    lookChanged |= sliderFloat("canvas weave", &s.weave, 0.f, 1.f);
+                    lookChanged |= sliderFloat("varnish", &s.varnish, 0.f, 1.f);
+                    lookChanged |= sliderFloat("craquelure", &s.crackle, 0.f, 1.f);
+                    lookChanged |= sliderFloat("vignette", &s.vignette, 0.f, 1.f);
+                    lookChanged |= sliderFloat("wet smear", &s.licStrength, 0.f, 1.f);
+                    lookChanged |= sliderFloat("contours", &s.contour, 0.f, 1.f);
+                    lookChanged |= sliderFloat("rain", &s.rain, 0.f, 1.f);
+                    }
+                }
+            if (lookChanged) {
+                s.enabled = 1.f;
+                settingsChanged = true;
+            }
+            pipe.setStyle(s);
+        }
+
+        // ── Relaxation ─────────────────────────────────────────────────
+        // Hertzmann 2001 on top of the greedy result. These were CLI-only,
+        // which meant the one knob that trades fidelity for economy could not
+        // be turned while looking at the picture it changes.
+        ImGui::Separator();
+        ImGui::TextDisabled("relaxation (Hertzmann 2001)");
+        sliderInt("iterations", &cfg.relaxIterations, 0, 16);
+        if (cfg.relaxIterations > 0) {
+            // Each iteration repaints the whole canvas from the stroke pool,
+            // so the cost is roughly one extra render per iteration -- worth
+            // saying, because the frame time below is the only other clue.
+            sliderFloat("area weight", &params.relaxAreaWeight, 0.f, 0.4f);
+            ImGui::TextDisabled("higher = fewer, larger, bolder strokes");
+            sliderFloat("move scale", &params.relaxMoveScale, 0.f, 2.f);
+            sliderFloat("candidates", &params.relaxCandidates, 1.f, 16.f, "%.0f");
+            sliderFloat("remove", &params.relaxRemove, 0.f, 2.f);
+            ImGui::TextDisabled("0 = off, 1 = break even");
+            if (pipe.lastPoolCount() > 0) {
+                ImGui::Text("pool %u   moved %u   removed %u",
+                            pipe.lastPoolCount(), pipe.lastRelaxAccepted(),
+                            pipe.lastRelaxRemoved());
+                if (pipe.lastPoolCount() >= SBR_POOL_MAX)
+                    ImGui::TextColored(ImVec4(1.f, 0.7f, 0.3f, 1.f),
+                                       "pool full - strokes past %u are not relaxed",
+                                       SBR_POOL_MAX);
+            }
+        }
+
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+        }
+        if (gui.kind == InputKind::Video && ImGui::BeginTabItem("Video")) {
+        ImGui::BeginChild("##VideoControls", ImVec2(0.f, -112.f), false);
+            ImGui::Separator();
+            ImGui::TextDisabled("05  VIDEO FRAME COHERENCE");
+            if (ImGui::Checkbox("Keep strokes between frames", &temporal)) {
+                temporalChoiceMade = true;
+                params.frameDiffThreshold = temporal ? 12.f : 0.f;
+                pipe.resetTemporal();
+            }
+            ImGui::TextDisabled("Reuses stable paint; moving areas are repainted.");
+            if (temporal) {
+                sliderFloat("repaint on change", &params.frameDiffThreshold,
+                                   1.f, 64.f, "%.0f");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Source difference needed to repaint a cell.\nLower = more fresh paint.");
+                sliderInt("motion tracking levels", &cfg.flowLevels, 0, 6);
+                if (cfg.flowLevels > 0) {
+                    sliderInt("tracking iterations", &cfg.flowIterations, 1, 6);
+                    if (pipe.msFlow() > 0.0)
+                        ImGui::Text("motion tracking %.2f ms", pipe.msFlow());
+                }
+                sliderFloat("fresh paint", &cfg.freshPaint, 0.f, 1.f, "%.2f");
+            }
+            ImGui::EndChild();
+        ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Export")) {
+        ImGui::BeginChild("##ExportControls", ImVec2(0.f, -112.f), false);
         // ── Export ─────────────────────────────────────────────────────
         ImGui::Separator();
-        ImGui::TextDisabled("EXPORT");
+        ImGui::TextDisabled("06  EXPORT");
         {
             char buf[1024];
             if (gui.kind == InputKind::Video) {
@@ -1248,7 +1558,7 @@ int main(int argc, char** argv) {
                         fileName(gui.videoOut).c_str(), "mp4");
                     if (!p.empty()) gui.videoOut = p;
                 }
-                ImGui::SliderInt("quality (crf)", &gui.crf, 12, 30);
+                sliderInt("quality (crf)", &gui.crf, 12, 30);
                 ImGui::TextDisabled("lower = better and bigger");
                 if (gui.video.hasAudio) ImGui::Checkbox("keep audio", &gui.keepAudio);
             } else if (gui.kind != InputKind::None) {
@@ -1268,7 +1578,7 @@ int main(int argc, char** argv) {
             }
 
             if (gui.kind == InputKind::None) {
-                ImGui::TextDisabled("load something first");
+                ImGui::TextWrapped("Open an image or video to export. The visible image is a demo preview.");
             } else if (gui.exporting) {
                 const float frac = gui.progress.total > 0
                     ? float(double(gui.progress.done) / double(gui.progress.total)) : 0.f;
@@ -1293,120 +1603,12 @@ int main(int argc, char** argv) {
         }
 
         ImGui::Separator();
-        ImGui::Text("seeds %u   drawn %u   %.1f pts/stroke",
-                    pipe.lastStrokeCount(), pipe.lastDrawnCount(), pipe.lastMeanPoints());
-        ImGui::Text("GPU  %.2f ms  (%.0f fps)", pipe.msTotal(),
-                    pipe.msTotal() > 0.0 ? 1000.0 / pipe.msTotal() : 0.0);
-        ImGui::Text("  reference %.2f  error  %.2f", pipe.msReference(), pipe.msError());
-        ImGui::Text("  seeds     %.2f  trace  %.2f", pipe.msSeeds(), pipe.msTrace());
-        ImGui::Text("  raster    %.2f  impasto %.2f", pipe.msRaster(), pipe.msImpasto());
-        if (pipe.msRelax() > 0.0) ImGui::Text("  relax     %.2f", pipe.msRelax());
-        if (pipe.msStyle() > 0.0) ImGui::Text("  style     %.2f", pipe.msStyle());
-        ImGui::Text("frame wall  %.2f ms", cpuMs);
-
-        // ── brushkit style ─────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::TextDisabled("BRUSHKIT STYLE");
-        {
-            const std::vector<styles::Info>& sl = styles::list();
-            if (ImGui::BeginCombo("style", sl[size_t(guiStyle)].name)) {
-                for (int i = 0; i < int(sl.size()); ++i) {
-                    char label[200];
-                    snprintf(label, sizeof(label), "%s  -  %s %s", sl[size_t(i)].name,
-                             sl[size_t(i)].era, sl[size_t(i)].years);
-                    if (ImGui::Selectable(label, i == guiStyle)) {
-                        if (customLookActive) styleAutoScale = true;
-                        guiStyle = i;
-                        // back to "none": the web preset's look, untouched
-                        if (i == 0) applyPreset(kPresets[presetIdx], params, cfg, &radiiText);
-                        restyle();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            ImGui::TextWrapped("%s", sl[size_t(guiStyle)].summary);
-            if (guiStyle > 0) {
-                if (customLookActive) {
-                    ImGui::TextDisabled("Saved look keeps its brush size; reset style to rescale.");
-                } else {
-                    if (ImGui::Checkbox("stroke size follows image", &styleAutoScale)) restyle();
-                    if (!styleAutoScale) {
-                        ImGui::SliderFloat("stroke size", &styleScaleVal, 0.3f, 4.f);
-                        if (ImGui::IsItemDeactivatedAfterEdit()) restyle();
-                    }
-                }
-                if (ImGui::Button("reset style")) {
-                    styleAutoScale = true;
-                    restyle();
-                }
-                StyleParams& s = styleP;
-                if (ImGui::CollapsingHeader("style: brush")) {
-                    ImGui::SliderFloat("width x", &s.widthScale, 0.3f, 2.5f);
-                    ImGui::SliderFloat("bristles", &s.bristles, 0.f, 60.f, "%.0f");
-                    ImGui::SliderFloat("bristle clump", &s.bristleClump, 0.f, 1.f);
-                    ImGui::SliderFloat("bristle streaks", &s.bristleContrast, 0.f, 1.f);
-                    ImGui::SliderFloat("paint load", &s.load, 0.1f, 1.f);
-                    ImGui::SliderFloat("dry out", &s.dryout, 0.f, 1.f);
-                    ImGui::SliderFloat("dry on tooth", &s.dryTooth, 0.f, 1.f);
-                    ImGui::SliderFloat("edge rough", &s.edgeRough, 0.f, 0.6f);
-                    ImGui::SliderFloat("end jag", &s.endJag, 0.f, 1.f);
-                    ImGui::SliderFloat("impasto", &s.impasto, 0.f, 2.f);
-                    ImGui::SliderFloat("edge ridge", &s.ridge, 0.f, 1.f);
-                    ImGui::SliderFloat("grooves", &s.groove, 0.f, 2.f);
-                    ImGui::SliderFloat("wet pickup", &s.pickup, 0.f, 1.f);
-                    ImGui::SliderFloat("smear", &s.smear, 0.f, 1.f);
-                }
-                if (ImGui::CollapsingHeader("style: field & colour")) {
-                    const char* kFields[] = {"image flow", "vortex", "patches", "curl", "waves", "constant"};
-                    int fm = int(s.fieldMode + 0.5f);
-                    if (ImGui::Combo("field", &fm, kFields, 6)) s.fieldMode = float(fm);
-                    ImGui::SliderFloat("field mix", &s.fieldMix, 0.f, 1.f);
-                    ImGui::SliderFloat("wobble", &s.perturb, 0.f, 1.5f);
-                    if (fm == 1) {
-                        bool av = s.autoVortex > 0.5f;
-                        if (ImGui::Checkbox("vortex follows light", &av)) s.autoVortex = av ? 1.f : 0.f;
-                        ImGui::SliderFloat("spiral", &s.vortexSpiral, -1.5f, 1.5f);
-                        ImGui::SliderFloat("vortex radius", &s.vortexRadius, 0.05f, 1.f);
-                    }
-                    ImGui::SliderFloat("palette pull", &s.palettePull, 0.f, 1.f);
-                    ImGui::SliderFloat("broken colour L", &s.labJitterL, 0.f, 20.f);
-                    ImGui::SliderFloat("broken colour ab", &s.labJitterAB, 0.f, 20.f);
-                    ImGui::SliderFloat("saturation", &s.saturation, 0.f, 2.f);
-                    ImGui::SliderFloat("warm / cool", &s.warmCool, -1.f, 1.f);
-                }
-                if (ImGui::CollapsingHeader("style: surface & effects")) {
-                    ImGui::SliderFloat("lay-in", &s.underOpacity, 0.f, 1.f);
-                    ImGui::SliderFloat("canvas weave", &s.weave, 0.f, 1.f);
-                    ImGui::SliderFloat("relief", &s.impastoLight, 0.f, 2.f);
-                    ImGui::SliderFloat("relief scale", &s.reliefScale, 0.f, 4.f);
-                    ImGui::SliderFloat("gloss", &s.specular, 0.f, 0.6f);
-                    ImGui::SliderFloat("varnish", &s.varnish, 0.f, 1.f);
-                    ImGui::SliderFloat("craquelure", &s.crackle, 0.f, 1.f);
-                    ImGui::SliderFloat("vignette", &s.vignette, 0.f, 1.f);
-                    ImGui::SliderFloat("wet smear", &s.licStrength, 0.f, 1.f);
-                    ImGui::SliderFloat("contours", &s.contour, 0.f, 1.f);
-                    ImGui::SliderFloat("rain", &s.rain, 0.f, 1.f);
-                }
-                pipe.setStyle(s);
-            }
-        }
-
-        ImGui::Separator();
-        if (ImGui::Combo("preset", &presetIdx,
-                         [](void*, int i, const char** out) {
-                             *out = kPresets[i].name; return true;
-                         }, nullptr, kPresetCount)) {
-            applyPreset(kPresets[presetIdx], params, cfg, &radiiText);
-            snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
-            tensorOn = params.tensorSigma > 0.f;
-        }
-
-        // Save / load a whole look. The five built-in presets are the web's
-        // and are not editable; this is how a look found by dragging sliders
-        // survives the session, and how it reaches a --video render.
+        ImGui::TextDisabled("SAVE OR LOAD COMPLETE LOOK");
+        // Save and load the complete editable look, including independent
+        // brush, path, colour, and surface settings.
         static const std::vector<filedialog::Filter> kParamFilter = {
             {"Brushkit parameters", "*.sbr"}};
-        if (ImGui::Button("Save params...")) {
+        if (ImGui::Button("Save look...")) {
             const std::string p = filedialog::saveFile(
                 "Save parameters", kParamFilter, "look.sbr", "sbr");
             if (!p.empty()) {
@@ -1417,7 +1619,7 @@ int main(int argc, char** argv) {
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Load params...")) {
+        if (ImGui::Button("Load look...")) {
             const std::string p = filedialog::openFile("Load parameters", kParamFilter);
             if (!p.empty()) {
                 std::string perr, key;
@@ -1436,10 +1638,7 @@ int main(int argc, char** argv) {
                     if (!withStyle) cfg.layerSpecs.clear();
                     guiStyle = withStyle ? std::max(0, styles::indexOf(key)) : 0;
                     customLookActive = withStyle;
-                    if (withStyle) styleAutoScale = false;
                     pipe.setStyle(styleP);
-                    styledW = pipe.width();
-                    styledH = pipe.height();
                     // Everything the panel mirrors in its own state has to be
                     // resynced, or the widgets would keep showing the old look
                     // while the renderer used the new one.
@@ -1453,123 +1652,25 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        if (ImGui::InputText("brush radii", radiiBuf, sizeof(radiiBuf),
-                             ImGuiInputTextFlags_EnterReturnsTrue)) {
-            cfg.radii = parseRadii(radiiBuf);
-            radiiText = radiiToString(cfg.radii);
-            snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
+        ImGui::EndChild();
+        ImGui::EndTabItem();
         }
-        ImGui::TextDisabled("coarse to fine, press Enter to apply");
-
-        int upi = int(cfg.underpaint);
-        if (ImGui::Combo("underpaint", &upi, kUnderpaintNames, 3))
-            cfg.underpaint = Underpaint(upi);
-
-        ImGui::Separator();
-        ImGui::TextDisabled("placement");
-        ImGui::SliderFloat("threshold", &params.threshold, 1.f, 150.f, "%.0f");
-        ImGui::SliderFloat("grid factor", &params.gridFactor, 0.25f, 2.5f);
-        ImGui::TextDisabled("stroke path");
-        ImGui::SliderFloat("max length", &params.maxStrokeLength, 1.f, 32.f, "%.0f");
-        ImGui::SliderFloat("min length", &params.minStrokeLength, 1.f, 32.f, "%.0f");
-        ImGui::SliderFloat("curvature", &params.curvature, 0.f, 1.f);
-        ImGui::Checkbox("structure tensor", &tensorOn);
-        if (tensorOn) ImGui::SliderFloat("tensor sigma", &params.tensorSigma, 0.5f, 8.f);
-
-        // Edge Tangent Flow. Sits with the flow-field controls because that is
-        // what it refines -- it is a filter on the field, not a stroke setting.
-        ImGui::SliderInt("etf iterations", &cfg.etfIterations, 0, 8);
-        if (cfg.etfIterations > 0) {
-            ImGui::SliderFloat("etf radius", &params.etfRadius, 1.f, 12.f, "%.0f px");
-            // The kernel is a disc, so the cost is quadratic in the radius and
-            // linear in both the iterations and the layer count. Worth stating
-            // next to the sliders rather than leaving it to be discovered in
-            // the frame time.
-            ImGui::TextDisabled("edge-aware flow smoothing; cost ~ r^2 x iters");
+        ImGui::EndTabBar();
         }
 
-        ImGui::Separator();
-        ImGui::TextDisabled("paint");
-        ImGui::SliderFloat("opacity", &params.opacity, 0.05f, 1.f);
-        ImGui::SliderFloat("hue jitter", &params.jitterHue, 0.f, 0.3f);
-        ImGui::SliderFloat("sat jitter", &params.jitterSat, 0.f, 0.5f);
-        ImGui::SliderFloat("val jitter", &params.jitterVal, 0.f, 0.5f);
-        ImGui::SliderFloat("size jitter", &params.sizeJitter, 0.f, 0.6f);
-        ImGui::SliderFloat("angle jitter", &params.angleJitter, 0.f, 45.f, "%.0f deg");
-        ImGui::SliderFloat("opacity jitter", &params.opacityJitter, 0.f, 0.6f);
+        if (ImGui::CollapsingHeader("Diagnostics")) {
+        ImGui::Text("seeds %u   drawn %u   %.1f pts/stroke",
+                    pipe.lastStrokeCount(), pipe.lastDrawnCount(), pipe.lastMeanPoints());
+        ImGui::Text("GPU  %.2f ms  (%.0f fps)", pipe.msTotal(),
+                    pipe.msTotal() > 0.0 ? 1000.0 / pipe.msTotal() : 0.0);
+        ImGui::Text("  reference %.2f  error  %.2f", pipe.msReference(), pipe.msError());
+        ImGui::Text("  seeds     %.2f  trace  %.2f", pipe.msSeeds(), pipe.msTrace());
+        ImGui::Text("  raster    %.2f  impasto %.2f", pipe.msRaster(), pipe.msImpasto());
+        if (pipe.msRelax() > 0.0) ImGui::Text("  relax     %.2f", pipe.msRelax());
+        if (pipe.msStyle() > 0.0) ImGui::Text("  style     %.2f", pipe.msStyle());
+        ImGui::Text("frame wall  %.2f ms", cpuMs);
 
-        ImGui::Separator();
-        ImGui::TextDisabled("brush texture");
-        ImGui::SliderFloat("texture", &params.texStrength, 0.f, 1.f);
-        if (params.texStrength > 0.f) {
-            if (ImGui::SliderFloat("bristle density", &cfg.bristleDensity, 2.f, 30.f))
-                pipe.buildBrushTiles(cfg.radii, cfg.bristleDensity);
-            ImGui::SliderFloat("tip taper", &params.texTaper, 0.f, 1.f);
-            ImGui::SliderFloat("dry brush", &params.dryBrush, 0.f, 1.f);
-        }
-
-        ImGui::Separator();
-        ImGui::TextDisabled("impasto");
-        // The web exposes these as Off / Subtle / Medium / Strong = 0, .15,
-        // .3, .5. Past ~0.6 the height field saturates in dense areas and the
-        // relief lighting clips to its clamps, so the range stops where the
-        // web's does.
-        ImGui::SliderFloat("height", &params.impastoStrength, 0.f, 0.5f);
-        ImGui::SliderFloat("relief light", &params.impastoLight, 0.f, 0.5f);
-        if (params.impastoLight > 0.f)
-            ImGui::SliderFloat("light angle", &params.lightAngle, 0.f, 360.f, "%.0f deg");
-
-        // ── Relaxation ─────────────────────────────────────────────────
-        // Hertzmann 2001 on top of the greedy result. These were CLI-only,
-        // which meant the one knob that trades fidelity for economy could not
-        // be turned while looking at the picture it changes.
-        ImGui::Separator();
-        ImGui::TextDisabled("relaxation (Hertzmann 2001)");
-        ImGui::SliderInt("iterations", &cfg.relaxIterations, 0, 16);
-        if (cfg.relaxIterations > 0) {
-            // Each iteration repaints the whole canvas from the stroke pool,
-            // so the cost is roughly one extra render per iteration -- worth
-            // saying, because the frame time below is the only other clue.
-            ImGui::SliderFloat("area weight", &params.relaxAreaWeight, 0.f, 0.4f);
-            ImGui::TextDisabled("higher = fewer, larger, bolder strokes");
-            ImGui::SliderFloat("move scale", &params.relaxMoveScale, 0.f, 2.f);
-            ImGui::SliderFloat("candidates", &params.relaxCandidates, 1.f, 16.f, "%.0f");
-            ImGui::SliderFloat("remove", &params.relaxRemove, 0.f, 2.f);
-            ImGui::TextDisabled("0 = off, 1 = break even");
-            if (pipe.lastPoolCount() > 0) {
-                ImGui::Text("pool %u   moved %u   removed %u",
-                            pipe.lastPoolCount(), pipe.lastRelaxAccepted(),
-                            pipe.lastRelaxRemoved());
-                if (pipe.lastPoolCount() >= SBR_POOL_MAX)
-                    ImGui::TextColored(ImVec4(1.f, 0.7f, 0.3f, 1.f),
-                                       "pool full - strokes past %u are not relaxed",
-                                       SBR_POOL_MAX);
-            }
-        }
-
-        ImGui::Separator();
-        if (ImGui::Checkbox("temporal", &temporal)) pipe.resetTemporal();
-        if (temporal) {
-            ImGui::SliderInt("flow levels", &cfg.flowLevels, 0, 6);
-            if (cfg.flowLevels > 0) {
-                ImGui::SliderInt("flow iters", &cfg.flowIterations, 1, 6);
-                ImGui::TextDisabled("advects the paint with the motion;");
-                ImGui::TextDisabled("raise 'repaint if moved' to see the gain");
-                if (pipe.msFlow() > 0.0) ImGui::Text("flow %.2f ms", pipe.msFlow());
-            } else {
-                ImGui::TextDisabled("0 = paint stays pinned to the pixel grid");
-            }
-        }
-        if (temporal)
-            ImGui::SliderFloat("repaint if moved", &params.frameDiffThreshold, 0.f, 64.f, "%.0f");
-        if (temporal) {
-            ImGui::SliderFloat("fresh paint", &cfg.freshPaint, 0.f, 1.f, "%.2f");
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("0 = paint is warped along the motion (smeary)\n"
-                                  "1 =anything moving is repainted every frame");
-        }
-
-        if (ImGui::CollapsingHeader("layers")) {
+        if (ImGui::CollapsingHeader("Layer details")) {
             const std::vector<LayerStats>& ls = pipe.layerStats();
             for (size_t i = 0; i < ls.size(); ++i)
                 ImGui::Text("%d: r %.1f grid %.0f cells %u x%u seeds %u drawn %u",
@@ -1577,8 +1678,10 @@ int main(int argc, char** argv) {
                             ls[i].chunks, ls[i].strokes, ls[i].drawn);
         }
 
+        }
+
         ImGui::Separator();
-        ImGui::TextWrapped("Tab view - B hold for source - wheel zoom - drag pan");
+        ImGui::TextWrapped("Tab view  /  B source  /  wheel zoom  /  drag pan");
         ImGui::TextWrapped("F fit - 1 for 1:1 - F5 reload shaders - S save png - Esc quit");
         if (viewCtl.xf.zoom != 1.f) {
             ImGui::SameLine();
@@ -1588,6 +1691,7 @@ int main(int argc, char** argv) {
             }
         }
         ImGui::TextWrapped("%s", shaderMsg.c_str());
+        if (settingsChanged && playing) pipe.resetTemporal();
         ImGui::PopItemWidth();
         ImGui::End();
 
@@ -1652,10 +1756,10 @@ int main(int argc, char** argv) {
                 ImGui_ImplGlfw_NewFrame();
                 ImGui::NewFrame();
                 ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
-                ImGui::SetNextWindowSize(ImVec2(400, float(h)), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(float(panelW), float(h)), ImGuiCond_Always);
                 ImGui::Begin("brushkit", nullptr,
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                             ImGuiWindowFlags_NoCollapse);
+                             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
                 ImGui::TextDisabled("EXPORTING");
                 const float frac = p.total > 0
                     ? float(double(p.done) / double(p.total)) : 0.f;
@@ -1681,7 +1785,10 @@ int main(int argc, char** argv) {
                 vs.codec = opt.vcodec;
                 vs.preset = opt.vpreset;
                 vs.keepAudio = gui.keepAudio;
-                res = jobs::runVideo(pipe, params, cfg, vs, pump);
+                TuningParams exportParams = params;
+                exportParams.frameDiffThreshold = temporal
+                    ? std::max(1.f, params.frameDiffThreshold) : 0.f;
+                res = jobs::runVideo(pipe, exportParams, cfg, vs, pump);
             } else if (gui.kind == InputKind::Images) {
                 jobs::BatchSpec bs;
                 bs.files = gui.queue;

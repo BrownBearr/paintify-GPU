@@ -32,3 +32,23 @@ endif()
 # Shaders are loaded at runtime; point the exe at the source tree so hot-reload
 # edits take effect without a rebuild.
 target_compile_definitions(brushkit PRIVATE SBR_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# The build tree is directly runnable; the install tree is a portable bundle.
+add_custom_command(TARGET brushkit POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "$<TARGET_FILE_DIR:brushkit>/shaders")
+install(TARGETS brushkit RUNTIME DESTINATION .)
+install(FILES $<TARGET_RUNTIME_DLLS:brushkit> DESTINATION . OPTIONAL)
+install(DIRECTORY shaders DESTINATION .)
+install(FILES run.bat README.md DESTINATION .)
+# Carry notices for the libraries linked into the portable release.
+foreach(dependency IN ITEMS glfw3 glad glm imgui stb)
+    set(notice "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${dependency}/copyright")
+    if(EXISTS "${notice}")
+        install(FILES "${notice}" DESTINATION licenses RENAME "${dependency}.txt")
+    endif()
+endforeach()
+set(CPACK_GENERATOR ZIP)
+set(CPACK_PACKAGE_NAME Brushkit)
+set(CPACK_PACKAGE_VERSION 0.2.0)
+include(CPack)

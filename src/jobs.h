@@ -76,7 +76,7 @@ Result runFrames(Pipeline& pipe, TuningParams params, const RenderConfig& cfg,
 
 // Writes the canvas in one of png / jpg / bmp / tga. Canvas texel row 0 is
 // image row 0, so nothing is flipped.
-void writeImage(const std::string& path, const std::vector<unsigned char>& px,
+bool writeImage(const std::string& path, const std::vector<unsigned char>& px,
                 int w, int h, const std::string& format);
 
 } // namespace jobs
