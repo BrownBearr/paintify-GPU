@@ -65,6 +65,17 @@ public:
     // repaints only the cells whose source moved (frameDiffThreshold).
     void render(const TuningParams& base, const RenderConfig& cfg, bool temporal = false);
 
+    // The interactive entry point: paints only when something that reaches the
+    // canvas has changed since the last paint (parameters, style, radii, source,
+    // shaders), and returns whether it did. A still image that nobody is
+    // touching is therefore painted once and then left alone -- re-painting it
+    // every display frame burned the GPU for nothing and made any residual
+    // run-to-run difference show up as shimmer. `temporal` (video playback)
+    // always paints. The frame counter only counts when something reads it
+    // (per-frame jitter, animated weather), so it does not defeat the check.
+    bool renderIfChanged(const TuningParams& base, const RenderConfig& cfg, bool temporal = false);
+    uint64_t renderCount() const { return m_renderCount; }
+
     // Forget the previous frame -- call when the subject changes.
     void resetTemporal() { m_havePrev = false; }
 
@@ -146,7 +157,9 @@ public:
     double msEtf()       const { return m_ms.etf; }
     double msFlow()      const { return m_ms.flow; }
     double msStyle()     const { return m_ms.style; }
-    double msTotal()     const { return msReference() + msError() + msSeeds()
+    // After a lone paint (a still at rest) the per-stage timers are a frame
+    // behind and mean little; renderIfChanged() then measures the paint whole.
+    double msTotal()     const { return m_settledMs >= 0.0 ? m_settledMs : msReference() + msError() + msSeeds()
                                       + msTrace() + msRaster() + msImpasto()
                                       + msRelax() + msEtf() + msFlow() + msStyle(); }
     uint32_t lastStrokeCount() const { return m_lastStrokes; }      // seeds
@@ -256,6 +269,13 @@ private:
     float m_brushDensity = -1.f;
 
     bool m_havePrev = false;
+    uint64_t m_renderCount = 0;
+    GLuint m_tsQ[2] = {0, 0};     // GL_TIMESTAMP pair around a whole paint
+    double m_settledMs = -1.0;
+    uint64_t m_lastKey = 0;
+    bool m_keyValid = false;      // m_lastKey describes what the canvas holds
+    bool m_statsPending = false;  // the last paint's stroke counts are not read yet
+    void renderImpl(const TuningParams& base, const RenderConfig& cfg, bool temporal);
     bool m_debugCells = false;
     bool m_logRelax = false;
     bool m_logEtf = false;

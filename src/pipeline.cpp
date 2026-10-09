@@ -160,6 +160,7 @@ bool Pipeline::reloadShaders(std::string* err) {
     m_support = supportP; m_styleField = styleFieldP; m_finish = finishP;
     m_post = postP; m_flat = flatP;
     m_toothKey[0] = -1.f;   // a reloaded support.comp must be allowed to rebuild
+    m_keyValid = false;     // new shaders: repaint even if no parameter moved
     return true;
 }
 
@@ -248,6 +249,7 @@ void Pipeline::resize(int w, int h) {
 
 bool Pipeline::setSource(const unsigned char* rgba, int w, int h) {
     if (w <= 0 || h <= 0) return false;
+    m_keyValid = false;   // new pixels: whatever is on the canvas is out of date
     // Keep the outgoing frame's source for the temporal difference test before
     // it is overwritten.
     if (w == m_w && h == m_h && m_srcTex) {
@@ -1029,8 +1031,65 @@ void Pipeline::relax(TuningParams& p, const RenderConfig& cfg,
     endStage(m_tRelax, m_ms.relax);
 }
 
+// FNV-1a over raw bytes. Every struct hashed below is a flat run of 32-bit
+// floats/ints with no padding, so equal values hash equal.
+static uint64_t fnv(uint64_t h, const void* data, size_t n) {
+    const unsigned char* b = static_cast<const unsigned char*>(data);
+    for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
+    return h;
+}
+
 void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool temporal) {
+    m_keyValid = false;   // a direct paint says nothing about what renderIfChanged last saw
+    renderImpl(base, cfg, temporal);
+}
+
+bool Pipeline::renderIfChanged(const TuningParams& base, const RenderConfig& cfg, bool temporal) {
+    if (!m_w || !m_h) return false;
+
+    TuningParams p = base;
+    if (p.jitterPerFrame <= 0.5f) p.frame = 0.f;   // frame only reaches the shaders through the jitter salt
+    StyleParams st = m_style;
+    if (!(st.rain > 0.f)) st.time = 0.f;           // ...and style.time only animates rain
+
+    uint64_t key = 1469598103934665603ull;
+    key = fnv(key, &p, sizeof(p));
+    key = fnv(key, &st, sizeof(st));
+    key = fnv(key, cfg.radii.data(), cfg.radii.size() * sizeof(float));
+    const int ints[] = {int(cfg.underpaint), cfg.passesPerLayer, cfg.relaxIterations,
+                        cfg.etfIterations, cfg.flowLevels, cfg.flowIterations,
+                        cfg.relaxSubPasses, int(cfg.layerSpecs.size())};
+    key = fnv(key, ints, sizeof(ints));
+    const float flts[] = {cfg.bristleDensity, cfg.freshPaint};
+    key = fnv(key, flts, sizeof(flts));
+    key = fnv(key, cfg.layerSpecs.data(), cfg.layerSpecs.size() * sizeof(LayerSpec));
+
+    if (!temporal && m_keyValid && key == m_lastKey) {
+        // Nothing changed. The previous paint's stroke counts are still wanted
+        // for the overlay; read them once now that the GPU has had time.
+        if (m_statsPending) {
+            readStats();   // blocks until the paint has finished, so the queries below are ready
+            GLuint64 t0 = 0, t1 = 0;
+            glGetQueryObjectui64v(m_tsQ[0], GL_QUERY_RESULT, &t0);
+            glGetQueryObjectui64v(m_tsQ[1], GL_QUERY_RESULT, &t1);
+            if (t1 > t0) m_settledMs = double(t1 - t0) * 1e-6;
+            m_statsPending = false;
+        }
+        return false;
+    }
+    renderImpl(base, cfg, temporal);
+    m_lastKey = key;
+    m_keyValid = !temporal;
+    return true;
+}
+
+void Pipeline::renderImpl(const TuningParams& base, const RenderConfig& cfg, bool temporal) {
     if (!m_w || !m_h) return;
+    ++m_renderCount;
+    m_statsPending = true;
+    m_settledMs = -1.0;
+    if (!m_tsQ[0]) glGenQueries(2, m_tsQ);
+    glQueryCounter(m_tsQ[0], GL_TIMESTAMP);
 
     // paintify(): drop radii below 1 and paint coarse to fine.
     std::vector<float> radii = cfg.radii;
@@ -1372,6 +1431,7 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
     glCopyImageSubData(m_canvasTex, GL_TEXTURE_2D, 0, 0, 0, 0,
                        m_prevCanvasTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_w, m_h, 1);
     m_havePrev = true;
+    glQueryCounter(m_tsQ[1], GL_TIMESTAMP);
 }
 
 std::vector<unsigned char> Pipeline::readCanvas() const {

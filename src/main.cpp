@@ -2574,7 +2574,9 @@ int main(int argc, char** argv) {
         }
     };
 
+    uint64_t shownFrames = 0;
     while (!glfwWindowShouldClose(win)) {
+        ++shownFrames;
         glfwPollEvents();
 
         if (pendingScale > 0.f) {
@@ -2645,7 +2647,9 @@ int main(int argc, char** argv) {
 
         const double t0 = glfwGetTime();
         params.tensorSigma = tensorOn ? std::max(0.1f, params.tensorSigma) : 0.f;
-        pipe.render(params, cfg, playing && temporal);
+        // Paint only when an input actually changed: a still that nobody is
+        // touching is painted once, not 60 times a second.
+        pipe.renderIfChanged(params, cfg, playing && temporal);
         params.frame += 1.f;
 
         const Layout L = computeLayout();
@@ -2862,6 +2866,9 @@ int main(int argc, char** argv) {
         }
     }
 
+    printf("session: %llu frames shown, %llu canvas paints\n",
+           (unsigned long long)shownFrames, (unsigned long long)pipe.renderCount());
+    fflush(stdout);
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
