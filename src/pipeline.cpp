@@ -23,6 +23,7 @@ enum : GLuint {
     BIND_POOL_COUNTER = 8,
     BIND_ENERGY = 9,
     BIND_ETF_MAX = 10,
+    BIND_SEED_TILES = 11,
 };
 
 // Texture units, mirrored in the shaders.
@@ -100,8 +101,8 @@ void Pipeline::shutdown() {
     GLuint bufs[] = {m_cellBuf, m_seedBuf, m_vertexBuf, m_headerBuf,
                      m_counterBuf, m_indirectBuf, m_statsBuf, m_paramsUbo,
                      m_poolVertexBuf, m_poolHeaderBuf, m_poolCounterBuf,
-                     m_energyBuf, m_etfMaxBuf, m_styleUbo};
-    glDeleteBuffers(14, bufs);
+                     m_energyBuf, m_etfMaxBuf, m_styleUbo, m_tileBuf};
+    glDeleteBuffers(15, bufs);
     GLuint texs[] = {m_srcTex, m_refTex, m_tmpTex, m_tensorTex, m_gradTex, m_errTex,
                      m_diffTex, m_canvasTex, m_heightTex, m_prevSrcTex,
                      m_prevCanvasTex, m_underTex, m_brushTex, m_etfTex,
@@ -159,6 +160,7 @@ bool Pipeline::reloadShaders(std::string* err) {
     m_support = supportP; m_styleField = styleFieldP; m_finish = finishP;
     m_post = postP; m_flat = flatP;
     m_toothKey[0] = -1.f;   // a reloaded support.comp must be allowed to rebuild
+    m_keyValid = false;     // new shaders: repaint even if no parameter moved
     return true;
 }
 
@@ -247,6 +249,7 @@ void Pipeline::resize(int w, int h) {
 
 bool Pipeline::setSource(const unsigned char* rgba, int w, int h) {
     if (w <= 0 || h <= 0) return false;
+    m_keyValid = false;   // new pixels: whatever is on the canvas is out of date
     // Keep the outgoing frame's source for the temporal difference test before
     // it is overwritten.
     if (w == m_w && h == m_h && m_srcTex) {
@@ -454,6 +457,24 @@ void Pipeline::ensureCellCapacity(uint32_t cells) {
     m_cellCapacity = cells;
     m_cellBuf = glu::createBuffer(GL_SHADER_STORAGE_BUFFER,
                                   GLsizeiptr(cells) * 16, nullptr, GL_DYNAMIC_COPY);
+}
+
+// A stride near N/phi that is coprime to N, so i -> i*stride mod N visits every
+// tile exactly once in a scattered order. 64-bit products keep it exact.
+static uint32_t coprimeStride(uint32_t n) {
+    if (n < 3u) return 1u;
+    uint32_t k = std::max(1u, uint32_t(double(n) * 0.6180339887));
+    auto gcd = [](uint32_t a, uint32_t b) { while (b) { uint32_t t = a % b; a = b; b = t; } return a; };
+    while (gcd(k, n) != 1u) ++k;
+    return k;
+}
+
+void Pipeline::ensureTileCapacity(uint32_t tiles) {
+    if (tiles <= m_tileCapacity && m_tileBuf) return;
+    if (m_tileBuf) glDeleteBuffers(1, &m_tileBuf);
+    m_tileCapacity = tiles;
+    m_tileBuf = glu::createBuffer(GL_SHADER_STORAGE_BUFFER,
+                                  GLsizeiptr(tiles) * 4, nullptr, GL_DYNAMIC_COPY);
 }
 
 // Sums the per-(layer, pass) counters into the reported totals. Called at the
@@ -1010,8 +1031,65 @@ void Pipeline::relax(TuningParams& p, const RenderConfig& cfg,
     endStage(m_tRelax, m_ms.relax);
 }
 
+// FNV-1a over raw bytes. Every struct hashed below is a flat run of 32-bit
+// floats/ints with no padding, so equal values hash equal.
+static uint64_t fnv(uint64_t h, const void* data, size_t n) {
+    const unsigned char* b = static_cast<const unsigned char*>(data);
+    for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
+    return h;
+}
+
 void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool temporal) {
+    m_keyValid = false;   // a direct paint says nothing about what renderIfChanged last saw
+    renderImpl(base, cfg, temporal);
+}
+
+bool Pipeline::renderIfChanged(const TuningParams& base, const RenderConfig& cfg, bool temporal) {
+    if (!m_w || !m_h) return false;
+
+    TuningParams p = base;
+    if (p.jitterPerFrame <= 0.5f) p.frame = 0.f;   // frame only reaches the shaders through the jitter salt
+    StyleParams st = m_style;
+    if (!(st.rain > 0.f)) st.time = 0.f;           // ...and style.time only animates rain
+
+    uint64_t key = 1469598103934665603ull;
+    key = fnv(key, &p, sizeof(p));
+    key = fnv(key, &st, sizeof(st));
+    key = fnv(key, cfg.radii.data(), cfg.radii.size() * sizeof(float));
+    const int ints[] = {int(cfg.underpaint), cfg.passesPerLayer, cfg.relaxIterations,
+                        cfg.etfIterations, cfg.flowLevels, cfg.flowIterations,
+                        cfg.relaxSubPasses, int(cfg.layerSpecs.size())};
+    key = fnv(key, ints, sizeof(ints));
+    const float flts[] = {cfg.bristleDensity, cfg.freshPaint};
+    key = fnv(key, flts, sizeof(flts));
+    key = fnv(key, cfg.layerSpecs.data(), cfg.layerSpecs.size() * sizeof(LayerSpec));
+
+    if (!temporal && m_keyValid && key == m_lastKey) {
+        // Nothing changed. The previous paint's stroke counts are still wanted
+        // for the overlay; read them once now that the GPU has had time.
+        if (m_statsPending) {
+            readStats();   // blocks until the paint has finished, so the queries below are ready
+            GLuint64 t0 = 0, t1 = 0;
+            glGetQueryObjectui64v(m_tsQ[0], GL_QUERY_RESULT, &t0);
+            glGetQueryObjectui64v(m_tsQ[1], GL_QUERY_RESULT, &t1);
+            if (t1 > t0) m_settledMs = double(t1 - t0) * 1e-6;
+            m_statsPending = false;
+        }
+        return false;
+    }
+    renderImpl(base, cfg, temporal);
+    m_lastKey = key;
+    m_keyValid = !temporal;
+    return true;
+}
+
+void Pipeline::renderImpl(const TuningParams& base, const RenderConfig& cfg, bool temporal) {
     if (!m_w || !m_h) return;
+    ++m_renderCount;
+    m_statsPending = true;
+    m_settledMs = -1.0;
+    if (!m_tsQ[0]) glGenQueries(2, m_tsQ);
+    glQueryCounter(m_tsQ[0], GL_TIMESTAMP);
 
     // paintify(): drop radii below 1 and paint coarse to fine.
     std::vector<float> radii = cfg.radii;
@@ -1251,10 +1329,23 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
                                       GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
             glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
+            // Deterministic compaction in three dispatches (see seeds.comp).
+            const uint32_t tilesX = divUp(gridW, 8), tilesY = divUp(gridH, 8);
+            ensureTileCapacity(tilesX * tilesY);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_SEED_TILES, m_tileBuf);
             m_seeds.use();
             glUniform1i(m_seeds.uniform("uTemporal"), useTemporal ? 1 : 0);
+            glUniform1ui(m_seeds.uniform("uWgCount"), tilesX * tilesY);
+            glUniform1ui(m_seeds.uniform("uTileStride"), coprimeStride(tilesX * tilesY));
             glBindTextureUnit(UNIT_A, m_refTex);
-            glDispatchCompute(divUp(gridW, 8), divUp(gridH, 8), 1);
+            glUniform1i(m_seeds.uniform("uPhase"), 0);
+            glDispatchCompute(tilesX, tilesY, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glUniform1i(m_seeds.uniform("uPhase"), 1);
+            glDispatchCompute(1, 1, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glUniform1i(m_seeds.uniform("uPhase"), 2);
+            glDispatchCompute(tilesX, tilesY, 1);
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
             endStage(m_tSeeds, m_ms.seeds);
 
@@ -1340,6 +1431,7 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
     glCopyImageSubData(m_canvasTex, GL_TEXTURE_2D, 0, 0, 0, 0,
                        m_prevCanvasTex, GL_TEXTURE_2D, 0, 0, 0, 0, m_w, m_h, 1);
     m_havePrev = true;
+    glQueryCounter(m_tsQ[1], GL_TIMESTAMP);
 }
 
 std::vector<unsigned char> Pipeline::readCanvas() const {
