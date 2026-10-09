@@ -23,6 +23,7 @@ enum : GLuint {
     BIND_POOL_COUNTER = 8,
     BIND_ENERGY = 9,
     BIND_ETF_MAX = 10,
+    BIND_SEED_TILES = 11,
 };
 
 // Texture units, mirrored in the shaders.
@@ -100,8 +101,8 @@ void Pipeline::shutdown() {
     GLuint bufs[] = {m_cellBuf, m_seedBuf, m_vertexBuf, m_headerBuf,
                      m_counterBuf, m_indirectBuf, m_statsBuf, m_paramsUbo,
                      m_poolVertexBuf, m_poolHeaderBuf, m_poolCounterBuf,
-                     m_energyBuf, m_etfMaxBuf, m_styleUbo};
-    glDeleteBuffers(14, bufs);
+                     m_energyBuf, m_etfMaxBuf, m_styleUbo, m_tileBuf};
+    glDeleteBuffers(15, bufs);
     GLuint texs[] = {m_srcTex, m_refTex, m_tmpTex, m_tensorTex, m_gradTex, m_errTex,
                      m_diffTex, m_canvasTex, m_heightTex, m_prevSrcTex,
                      m_prevCanvasTex, m_underTex, m_brushTex, m_etfTex,
@@ -454,6 +455,24 @@ void Pipeline::ensureCellCapacity(uint32_t cells) {
     m_cellCapacity = cells;
     m_cellBuf = glu::createBuffer(GL_SHADER_STORAGE_BUFFER,
                                   GLsizeiptr(cells) * 16, nullptr, GL_DYNAMIC_COPY);
+}
+
+// A stride near N/phi that is coprime to N, so i -> i*stride mod N visits every
+// tile exactly once in a scattered order. 64-bit products keep it exact.
+static uint32_t coprimeStride(uint32_t n) {
+    if (n < 3u) return 1u;
+    uint32_t k = std::max(1u, uint32_t(double(n) * 0.6180339887));
+    auto gcd = [](uint32_t a, uint32_t b) { while (b) { uint32_t t = a % b; a = b; b = t; } return a; };
+    while (gcd(k, n) != 1u) ++k;
+    return k;
+}
+
+void Pipeline::ensureTileCapacity(uint32_t tiles) {
+    if (tiles <= m_tileCapacity && m_tileBuf) return;
+    if (m_tileBuf) glDeleteBuffers(1, &m_tileBuf);
+    m_tileCapacity = tiles;
+    m_tileBuf = glu::createBuffer(GL_SHADER_STORAGE_BUFFER,
+                                  GLsizeiptr(tiles) * 4, nullptr, GL_DYNAMIC_COPY);
 }
 
 // Sums the per-(layer, pass) counters into the reported totals. Called at the
@@ -1251,10 +1270,23 @@ void Pipeline::render(const TuningParams& base, const RenderConfig& cfg, bool te
                                       GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
             glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
+            // Deterministic compaction in three dispatches (see seeds.comp).
+            const uint32_t tilesX = divUp(gridW, 8), tilesY = divUp(gridH, 8);
+            ensureTileCapacity(tilesX * tilesY);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, BIND_SEED_TILES, m_tileBuf);
             m_seeds.use();
             glUniform1i(m_seeds.uniform("uTemporal"), useTemporal ? 1 : 0);
+            glUniform1ui(m_seeds.uniform("uWgCount"), tilesX * tilesY);
+            glUniform1ui(m_seeds.uniform("uTileStride"), coprimeStride(tilesX * tilesY));
             glBindTextureUnit(UNIT_A, m_refTex);
-            glDispatchCompute(divUp(gridW, 8), divUp(gridH, 8), 1);
+            glUniform1i(m_seeds.uniform("uPhase"), 0);
+            glDispatchCompute(tilesX, tilesY, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glUniform1i(m_seeds.uniform("uPhase"), 1);
+            glDispatchCompute(1, 1, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glUniform1i(m_seeds.uniform("uPhase"), 2);
+            glDispatchCompute(tilesX, tilesY, 1);
             glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
             endStage(m_tSeeds, m_ms.seeds);
 

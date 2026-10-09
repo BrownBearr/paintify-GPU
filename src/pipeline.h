@@ -160,6 +160,7 @@ private:
     void resize(int w, int h);
     void uploadParams(const TuningParams& p);
     void ensureCellCapacity(uint32_t cells);
+    void ensureTileCapacity(uint32_t tiles);
     void readStats();
 
     // Separable Gaussian, src -> dst via the scratch target.
@@ -247,6 +248,8 @@ private:
     GLuint m_statsBuf = 0;
     GLuint m_vao = 0;
     uint32_t m_cellCapacity = 0;
+    GLuint m_tileBuf = 0;           // per-8x8-tile seed counts/offsets (seeds.comp)
+    uint32_t m_tileCapacity = 0;
 
     std::vector<int> m_brushRows;     // used rows per radius index
     std::vector<float> m_brushRadii;  // radii the tiles were built for
