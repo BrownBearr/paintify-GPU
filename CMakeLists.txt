@@ -20,6 +20,8 @@ add_executable(brushkit
     src/filedialog.cpp
     src/paramfile.cpp
     src/styles.cpp
+    src/ui_theme.cpp
+    src/ui_widgets.cpp
 )
 
 target_include_directories(brushkit PRIVATE src ${STB_INCLUDE_DIRS})
@@ -34,15 +36,21 @@ endif()
 target_compile_definitions(brushkit PRIVATE SBR_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 # The build tree is directly runnable; the install tree is a portable bundle.
+# UI fonts (Geist, SIL OFL 1.1) travel the same way, so the interface looks
+# the same from the build tree and from a portable bundle.
 add_custom_command(TARGET brushkit POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "$<TARGET_FILE_DIR:brushkit>/shaders")
+            "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "$<TARGET_FILE_DIR:brushkit>/shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:brushkit>/fonts")
 install(TARGETS brushkit RUNTIME DESTINATION .)
 install(FILES $<TARGET_RUNTIME_DLLS:brushkit> DESTINATION . OPTIONAL)
 install(DIRECTORY shaders DESTINATION .)
+install(DIRECTORY assets/fonts/ DESTINATION fonts)
+install(FILES assets/fonts/OFL.txt DESTINATION licenses RENAME Geist-OFL.txt)
 install(FILES run.bat README.md DESTINATION .)
 # Carry notices for the libraries linked into the portable release.
-foreach(dependency IN ITEMS glfw3 glad glm imgui stb)
+foreach(dependency IN ITEMS glfw3 glad glm imgui stb freetype brotli bzip2 libpng zlib)
     set(notice "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${dependency}/copyright")
     if(EXISTS "${notice}")
         install(FILES "${notice}" DESTINATION licenses RENAME "${dependency}.txt")
