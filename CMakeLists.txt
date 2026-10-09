@@ -26,6 +26,9 @@ add_executable(brushkit
 )
 if(WIN32)
     target_sources(brushkit PRIVATE assets/icon/brushkit.rc)
+    # rc.exe's inputs are not dependency-scanned; rebuild when the images change.
+    set_source_files_properties(assets/icon/brushkit.rc PROPERTIES OBJECT_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/brushkit.ico;${CMAKE_CURRENT_SOURCE_DIR}/assets/icon/brushkit.png")
 endif()
 
 target_include_directories(brushkit PRIVATE src ${STB_INCLUDE_DIRS})
