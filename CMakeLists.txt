@@ -36,7 +36,7 @@ endif()
 target_compile_definitions(brushkit PRIVATE SBR_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 
 # The build tree is directly runnable; the install tree is a portable bundle.
-# UI fonts (Geist, SIL OFL 1.1) travel the same way, so the interface looks
+# UI fonts (Schibsted Grotesk + Geist Mono, SIL OFL 1.1) travel the same way, so the interface looks
 # the same from the build tree and from a portable bundle.
 add_custom_command(TARGET brushkit POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -53,8 +53,9 @@ install(CODE "
     file(INSTALL \${_brushkit_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}\")
 ")
 install(DIRECTORY shaders DESTINATION .)
-install(DIRECTORY assets/fonts/ DESTINATION fonts)
-install(FILES assets/fonts/OFL.txt DESTINATION licenses RENAME Geist-OFL.txt)
+install(DIRECTORY assets/fonts/ DESTINATION fonts PATTERN "*.txt" EXCLUDE)
+install(FILES assets/fonts/SchibstedGrotesk-OFL.txt DESTINATION licenses)
+install(FILES assets/fonts/GeistMono-OFL.txt DESTINATION licenses)
 install(FILES run.bat README.md DESTINATION .)
 # Carry notices for the libraries linked into the portable release.
 foreach(dependency IN ITEMS glfw3 glad glm imgui stb freetype brotli bzip2 libpng zlib)

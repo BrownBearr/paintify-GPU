@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 
@@ -29,20 +30,41 @@ float g_scale = 1.f;
 // Fonts ship beside the executable (portable bundle and build tree alike, via
 // the POST_BUILD copy), with the source tree as a fallback -- the same order
 // the shader loader uses.
-std::string fontDir() {
+// The UI family: Schibsted Grotesk (SIL OFL 1.1), files <Family>-Regular /
+// -Medium / -SemiBold.ttf. BRUSHKIT_FONT_FAMILY (and, for families not in
+// assets/fonts, BRUSHKIT_FONT_DIR) swap it for side-by-side comparison.
+std::string uiFamily() {
+    if (const char* e = std::getenv("BRUSHKIT_FONT_FAMILY"); e && *e) return e;
+    return "SchibstedGrotesk";
+}
+
+std::string fontDir(const std::string& family) {
     namespace fs = std::filesystem;
+    const std::string probe = family + "-Regular.ttf";
+    if (const char* e = std::getenv("BRUSHKIT_FONT_DIR"); e && *e && fs::exists(fs::path(e) / probe))
+        return e;
 #ifdef _WIN32
     char exe[MAX_PATH] = {};
     if (GetModuleFileNameA(nullptr, exe, MAX_PATH)) {
         const fs::path beside = fs::path(exe).parent_path() / "fonts";
-        if (fs::exists(beside / "Geist-Regular.ttf")) return beside.string();
+        if (fs::exists(beside / probe)) return beside.string();
     }
 #endif
 #ifdef SBR_ROOT_DIR
     const fs::path source = fs::path(SBR_ROOT_DIR) / "assets" / "fonts";
-    if (fs::exists(source / "Geist-Regular.ttf")) return source.string();
+    if (fs::exists(source / probe)) return source.string();
 #endif
     return {};
+}
+
+// Geist Mono sits beside the UI family wherever that is found.
+std::string monoPath(const std::string& primaryDir) {
+    namespace fs = std::filesystem;
+    const char* name = "GeistMono-Regular.ttf";
+    if (!primaryDir.empty() && fs::exists(fs::path(primaryDir) / name))
+        return (fs::path(primaryDir) / name).string();
+    const std::string d = fontDir("GeistMono");
+    return d.empty() ? std::string() : (fs::path(d) / name).string();
 }
 
 // Basic Latin + Latin-1 (covers ° × ·) plus the handful of typographic marks
@@ -82,12 +104,13 @@ void loadFonts(float s) {
     F = Fonts{};
     auto size = [&](float v) { return std::floor(v * s + 0.5f); };
 
-    const std::string dir = fontDir();
+    const std::string family = uiFamily();
+    const std::string dir = fontDir(family);
     if (!dir.empty()) {
-        const std::string regular = dir + "/Geist-Regular.ttf";
-        const std::string medium = dir + "/Geist-Medium.ttf";
-        const std::string semibold = dir + "/Geist-SemiBold.ttf";
-        const std::string mono = dir + "/GeistMono-Regular.ttf";
+        const std::string regular = dir + "/" + family + "-Regular.ttf";
+        const std::string medium = dir + "/" + family + "-Medium.ttf";
+        const std::string semibold = dir + "/" + family + "-SemiBold.ttf";
+        const std::string mono = monoPath(dir);
         // The first font added is ImGui's default, so body goes first.
         F.body = addFont(regular, size(T.body));
         F.bodyStrong = addFont(medium, size(T.bodyStrong));
@@ -95,7 +118,7 @@ void loadFonts(float s) {
         F.section = addFont(semibold, size(T.section));
         F.title = addFont(semibold, size(T.title));
         F.mono = addFont(mono, size(T.mono));
-        if (F.body) F.source = "Geist, Geist Mono (" + dir + ")";
+        if (F.body) F.source = family + ", Geist Mono (" + dir + ")";
     }
     if (!F.body) {
         // Graceful fallback: the system UI face, then ImGui's built-in one.
@@ -108,7 +131,7 @@ void loadFonts(float s) {
         F.section = addFont(win + "seguisb.ttf", size(T.section));
         F.title = addFont(win + "seguisb.ttf", size(T.title));
         F.mono = addFont(win + "consola.ttf", size(T.mono));
-        F.source = F.body ? "Segoe UI (Geist not found)" : "ImGui default (no fonts found)";
+        F.source = F.body ? "Segoe UI (UI font files not found)" : "ImGui default (no fonts found)";
         if (!F.body) {
             ImFontConfig cfg;
             cfg.SizePixels = size(13.f);
@@ -187,8 +210,8 @@ void applyStyle(float s) {
     c[ImGuiCol_ButtonHovered] = C.surface2;
     c[ImGuiCol_ButtonActive] = C.surface3;
     c[ImGuiCol_Header] = clear;
-    c[ImGuiCol_HeaderHovered] = C.surface3;
-    c[ImGuiCol_HeaderActive] = C.surface3;
+    c[ImGuiCol_HeaderHovered] = C.highlightHover;
+    c[ImGuiCol_HeaderActive] = C.highlightStrong;
     c[ImGuiCol_Separator] = C.borderSubtle;
     c[ImGuiCol_SeparatorHovered] = C.borderStrong;
     c[ImGuiCol_SeparatorActive] = C.accent;
@@ -197,10 +220,10 @@ void applyStyle(float s) {
     c[ImGuiCol_ResizeGripActive] = clear;
     c[ImGuiCol_TabHovered] = C.surface2;
     c[ImGuiCol_Tab] = clear;
-    c[ImGuiCol_TabSelected] = C.surface3;
-    c[ImGuiCol_TabSelectedOverline] = C.textPrimary;
+    c[ImGuiCol_TabSelected] = C.highlight;
+    c[ImGuiCol_TabSelectedOverline] = C.highlightEdge;
     c[ImGuiCol_TabDimmed] = clear;
-    c[ImGuiCol_TabDimmedSelected] = C.surface2;
+    c[ImGuiCol_TabDimmedSelected] = C.highlight;
     c[ImGuiCol_TabDimmedSelectedOverline] = clear;
     c[ImGuiCol_PlotLines] = C.textSecondary;
     c[ImGuiCol_PlotLinesHovered] = C.accent;
@@ -225,35 +248,50 @@ void applyStyle(float s) {
 
 } // namespace
 
+// ── Palette ────────────────────────────────────────────────────────────────
+// "Paper": editorial print. Cool paper white, near-black ink, International
+// Klein-style blue for action (primary, focus, drag, on) and a turquoise
+// "highlight" family for state that is *selected or filled* (slider values,
+// selected segment / tab, hovered rows). Blue says "act", turquoise says
+// "this is the current value".
+//
+// Contrast targets (WCAG 2.x): text 4.5:1 on every surface and highlight it
+// can sit on; disabled text 3:1; control outlines, toggle tracks, popup
+// borders and state markers 3:1. THEME_NOTES.md tabulates the ratios, computed
+// from these exact values.
 const Palette C = {
-    /*bgApp*/            hex(0x161616),
-    /*bgCanvasDark*/     hex(0x1F1F1F),
+    /*bgApp*/            hex(0xF4F4F2),
+    /*bgCanvasDark*/     hex(0xE2E2DF),
     /*bgCanvasGray*/     hex(0x767676),
-    /*bgCanvasWhite*/    hex(0xF2F2F2),
-    /*surface1*/         hex(0x1E1E1E),
-    /*surface2*/         hex(0x262626),
-    /*surface3*/         hex(0x2E2E2E),
-    /*borderSubtle*/     hex(0x262626),
-    /*borderDefault*/    hex(0x333333),
-    /*borderStrong*/     hex(0x4A4A4A),
-    /*textPrimary*/      hex(0xEDEDED),
-    /*textSecondary*/    hex(0xA3A3A3),
-    /*textTertiary*/     hex(0x6E6E6E),
-    /*textDisabled*/     hex(0x4D4D4D),
-    /*accent*/           hex(0xE0A458),
-    /*accentHover*/      hex(0xEBB673),
-    /*accentPressed*/    hex(0xC88D42),
-    /*accentTint*/       hex(0x3D3327),
-    /*accentTintStrong*/ hex(0x54442E),
-    /*onAccent*/         hex(0x161616),
-    /*danger*/           hex(0xE5484D),
-    /*success*/          hex(0x46A758),
-    /*scrollGrab*/       hex(0x333333),
-    /*scrollGrabHover*/  hex(0x4A4A4A),
-    /*modalDim*/         hex(0x000000, 0.55f),
-    /*imageEdge*/        hex(0x000000, 0.25f),
-    /*pillBg*/           hex(0x262626, 0.92f),
-    /*wipeLine*/         hex(0xEDEDED, 0.75f),
+    /*bgCanvasWhite*/    hex(0xFFFFFF),
+    /*surface1*/         hex(0xFFFFFF),
+    /*surface2*/         hex(0xFFFFFF),
+    /*surface3*/         hex(0xE7E7E4),
+    /*borderSubtle*/     hex(0xDEDED9),
+    /*borderDefault*/    hex(0x868680),
+    /*borderStrong*/     hex(0x4A4A47),
+    /*textPrimary*/      hex(0x141414),
+    /*textSecondary*/    hex(0x454542),
+    /*textTertiary*/     hex(0x5A5A56),
+    /*textDisabled*/     hex(0x8A8A85),
+    /*accent*/           hex(0x2438D8),
+    /*accentHover*/      hex(0x3347EA),
+    /*accentPressed*/    hex(0x1A2AB0),
+    /*accentTint*/       hex(0xE3E6FA),
+    /*accentTintStrong*/ hex(0xD6DBF8),
+    /*onAccent*/         hex(0xFFFFFF),
+    /*highlight*/        hex(0xD8F2EF),
+    /*highlightHover*/   hex(0xC9EDE9),
+    /*highlightStrong*/  hex(0xB5E6E1),
+    /*highlightEdge*/    hex(0x0B8580),
+    /*danger*/           hex(0xC21F1F),
+    /*success*/          hex(0x12714A),
+    /*scrollGrab*/       hex(0xC4C4BF),
+    /*scrollGrabHover*/  hex(0x9A9A94),
+    /*modalDim*/         hex(0x14141A, 0.40f),
+    /*imageEdge*/        hex(0x000000, 0.20f),
+    /*pillBg*/           hex(0xFFFFFF, 0.92f),
+    /*wipeLine*/         hex(0xFFFFFF, 0.90f),
 };
 const Metrics M{};
 const TypeScale T{};

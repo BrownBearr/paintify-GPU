@@ -208,23 +208,26 @@ bool scrubCore(const char* label, float* v, float lo, float hi, bool isInt,
         ImDrawFlags corners = ImDrawFlags_None;
         if (a <= 0.f) corners |= ImDrawFlags_RoundCornersLeft;
         if (b >= 1.f) corners |= ImDrawFlags_RoundCornersRight;
+        // Turquoise highlight for the value; deeper while it is dragged.
         dl->AddRectFilled(ImVec2(xa, p0.y), ImVec2(xb, p1.y),
-                          col(scrubbing ? C.accentTintStrong : C.accentTint),
+                          col(scrubbing ? C.highlightStrong : C.highlight),
                           corners ? r : 0.f, corners);
     }
-    // The level itself: a 2 px accent rule along the bottom of the fill.
+    // The level itself: a 2 px rule along the bottom of the fill.
     // (A vertical tick at the fill edge, as first drawn, cut through the
     // label at low values.)
     if (b > a) {
         const float xa = p0.x + w * a, xb = p0.x + w * b;
         const float lw = std::max(1.f, px(2.f));
         dl->PushClipRect(ImVec2(xa, p1.y - lw), ImVec2(xb, p1.y), true);
-        dl->AddRectFilled(ImVec2(p0.x, p1.y - r * 2.f), p1, col(C.accent), r,
-                          ImDrawFlags_RoundCornersBottom);
+        dl->AddRectFilled(ImVec2(p0.x, p1.y - r * 2.f), p1, col(scrubbing ? C.accent : C.highlightEdge),
+                          r, ImDrawFlags_RoundCornersBottom);
         dl->PopClipRect();
     }
-    if (hovered && !scrubbing)
-        dl->AddRect(p0, p1, col(C.borderStrong), r, 0, 1.f);
+    // Control boundary (WCAG 1.4.11): 3:1 at rest, stronger on hover, accent
+    // while dragging.
+    dl->AddRect(p0, p1, col(scrubbing ? C.accent : hovered ? C.borderStrong : C.borderDefault), r,
+                0, 1.f);
 
     // Value, right-aligned in mono, then the unit in tertiary.
     char vbuf[64];
@@ -503,7 +506,7 @@ bool TextTabs(const char* id, const char* const* items, int count, int* index) {
         drawText(dl, F.bodyStrong, x, start.y, h, col(c), items[i], labelEnd(items[i]));
         if (on)
             dl->AddRectFilled(ImVec2(x, start.y + h - px(2.f)), ImVec2(x + tw, start.y + h),
-                              col(C.textPrimary));
+                              col(C.highlightEdge));
         x += tw + px(M.s5);
     }
     // The underline row: one hairline across the whole panel.
@@ -566,13 +569,14 @@ bool Toggle(const char* label, bool* v, const char* help) {
     const float tw = px(M.toggleW), th = px(M.toggleH);
     const ImVec2 t0(p0.x + w - tw, p0.y + (h - th) * 0.5f);
     const ImVec2 t1(t0.x + tw, t0.y + th);
-    const ImVec4& track = *v ? (hovered ? C.accentHover : C.accent)
-                             : (hovered ? C.borderStrong : C.surface3);
+    const ImVec4& track = *v ? (hovered ? C.accentHover : C.accent) : C.surface3;
     dl->AddRectFilled(t0, t1, col(track), th * 0.5f);
+    if (!*v)   // an off track is only identifiable by its outline (>= 3:1)
+        dl->AddRect(t0, t1, col(hovered ? C.borderStrong : C.borderDefault), th * 0.5f, 0, 1.f);
     const float kr = th * 0.5f - px(2.f);
     const float kx = *v ? t1.x - th * 0.5f : t0.x + th * 0.5f;
     dl->AddCircleFilled(ImVec2(kx, t0.y + th * 0.5f), kr,
-                        col(*v ? C.onAccent : C.textSecondary), 20);
+                        col(*v ? C.onAccent : C.textTertiary), 20);
     if (help) Tooltip(help);
     return changed;
 }
@@ -600,6 +604,7 @@ bool Segmented(const char* id, const char* const* items, int count, int* index,
     const ImVec2 p0 = ImGui::GetCursorScreenPos();
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(p0, ImVec2(p0.x + total, p0.y + h), col(C.surface1), px(M.radiusMd));
+    dl->AddRect(p0, ImVec2(p0.x + total, p0.y + h), col(C.borderDefault), px(M.radiusMd), 0, 1.f);
 
     bool changed = false;
     float x = p0.x + inset;
@@ -617,7 +622,10 @@ bool Segmented(const char* id, const char* const* items, int count, int* index,
         const bool on = *index == i;
         if (on)
             dl->AddRectFilled(ImVec2(x, p0.y + inset), ImVec2(x + wi, p0.y + h - inset),
-                              col(C.surface3), px(M.radiusMd) - inset);
+                              col(C.highlight), px(M.radiusMd) - inset);
+        if (on)   // the selected segment carries a turquoise edge
+            dl->AddRect(ImVec2(x, p0.y + inset), ImVec2(x + wi, p0.y + h - inset),
+                        col(C.highlightEdge), px(M.radiusMd) - inset, 0, 1.f);
         ImFont* f = on ? F.bodyStrong : F.body;
         const std::string st = fitText(f, items[i], labelEnd(items[i]), wi - px(8.f));
         const float tw = textSize(f, st.c_str()).x;
@@ -653,7 +661,8 @@ bool BeginSelect(const char* label, const char* preview, float width, float maxP
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(p0, p1, col(hovered || open ? C.surface2 : C.surface1), px(M.radiusMd));
-    if (hovered || open) dl->AddRect(p0, p1, col(C.borderStrong), px(M.radiusMd), 0, 1.f);
+    dl->AddRect(p0, p1, col(hovered || open ? C.borderStrong : C.borderDefault), px(M.radiusMd), 0,
+                1.f);
     const char* le = labelEnd(label);
     const bool hasLabel = le != label;
     const float chevX = p1.x - pad - px(4.f);
@@ -705,7 +714,7 @@ bool SelectItem(const char* text, bool selected, const char* secondary) {
     if (selected && ImGui::IsWindowAppearing()) ImGui::SetScrollHereY(0.5f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
     if (hovered)
-        dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(C.surface3), px(M.radiusSm));
+        dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(C.highlightHover), px(M.radiusSm));
     const float tx = p0.x + px(24.f);
     if (selected)
         dl->AddCircleFilled(ImVec2(p0.x + px(11.f), p0.y + (secondary ? px(15.f) : h * 0.5f)),
@@ -763,6 +772,9 @@ bool Button(const char* label, ButtonKind kind, float width) {
             break;
     }
     if (bg.w > 0.f) dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(bg), px(M.radiusMd));
+    if (kind == ButtonKind::Secondary)
+        dl->AddRect(p0, ImVec2(p0.x + w, p0.y + h),
+                    col(hovered || held ? C.borderStrong : C.borderDefault), px(M.radiusMd), 0, 1.f);
     const char* le = labelEnd(label);
     const float tw = textSize(f, label, le).x;
     drawText(dl, f, p0.x + (w - tw) * 0.5f, p0.y, h, col(fg), label, le);
@@ -785,6 +797,9 @@ bool BeginMenuButton(const char* label, ButtonKind kind, const char* valueText) 
     ImVec4 bg = kind == ButtonKind::Secondary ? C.surface1 : ImVec4(0, 0, 0, 0);
     if (hovered || open) bg = C.surface2;
     if (bg.w > 0.f) dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(bg), px(M.radiusMd));
+    if (kind == ButtonKind::Secondary)
+        dl->AddRect(p0, ImVec2(p0.x + w, p0.y + h),
+                    col(hovered || open ? C.borderStrong : C.borderDefault), px(M.radiusMd), 0, 1.f);
     const ImU32 fg = col(hovered || open || kind == ButtonKind::Secondary ? C.textPrimary
                                                                          : C.textSecondary);
     drawText(dl, F.body, p0.x + pad, p0.y, h, fg, label, le);
@@ -819,7 +834,7 @@ bool MenuItem(const char* label, const char* shortcut, bool enabled) {
     const bool hovered = ImGui::IsItemHovered();
     ImGui::PopID();
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    if (hovered) dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(C.surface3), px(M.radiusSm));
+    if (hovered) dl->AddRectFilled(p0, ImVec2(p0.x + w, p0.y + h), col(C.highlightHover), px(M.radiusSm));
     drawText(dl, F.body, p0.x + px(10.f), p0.y, h, col(C.textPrimary), label, le);
     if (shortcut) {
         const float sx = p0.x + w - px(10.f) - textSize(F.caption, shortcut).x;
@@ -863,9 +878,11 @@ bool InputField(const char* label, char* buf, size_t size, ImGuiInputTextFlags f
                         ImVec2(px(M.fieldPadX), (px(M.controlH) - F.body->FontSize) * 0.5f));
     const bool r = hint ? ImGui::InputTextWithHint("##in", hint, buf, size, flags)
                         : ImGui::InputText("##in", buf, size, flags);
-    if (ImGui::IsItemHovered() && !ImGui::IsItemActive()) {
+    if (!ImGui::IsItemActive()) {
         const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
-        ImGui::GetWindowDrawList()->AddRect(a, b, col(C.borderStrong), px(M.radiusMd), 0, 1.f);
+        ImGui::GetWindowDrawList()->AddRect(
+            a, b, col(ImGui::IsItemHovered() ? C.borderStrong : C.borderDefault), px(M.radiusMd), 0,
+            1.f);
     }
     if (ImGui::IsItemActive()) {
         const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();

@@ -2242,8 +2242,9 @@ int main(int argc, char** argv) {
         else
             snprintf(perfText, sizeof(perfText), "%.1f ms  \xC2\xB7  %u strokes",
                      pipe.msTotal(), drawn);
-        const char* kBackdrops[] = {"Dark", "Gray", "White"};
-        const char* kBackdropTips[] = {"Dark surround", "18% grey surround, for judging values",
+        const char* kBackdrops[] = {"Light", "Gray", "White"};
+        const char* kBackdropTips[] = {"Light surround, matches the interface",
+                                       "18% grey surround, for judging values",
                                        "Paper-white surround"};
         const float bdW = ui::SegmentedWidth(kBackdrops, 3);
         const float linkPad = ui::px(ui::M.s3), gap = ui::px(ui::M.s1);

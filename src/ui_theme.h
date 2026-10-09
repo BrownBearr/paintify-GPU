@@ -7,10 +7,14 @@
 // interface uses. main.cpp and ui_widgets.cpp read these; nothing else should
 // hard-code a colour or a pixel size.
 //
-// Visual direction "Gallery Wall": strictly neutral graphite chrome so the
-// painting is the only colourful thing on screen, a single ochre accent that
-// marks *active state* only, and hierarchy carried by type and space rather
-// than boxes.
+// Visual direction "Darkroom / Gallery Wall": near-neutral chrome so the
+// painting is the only colourful thing on screen, one accent that marks
+// *active state* only (primary action, drag, on, focus -- never a resting
+// fill), and hierarchy carried by type and space rather than boxes.
+//
+// One palette, "Paper": blue for action, turquoise (highlight*) for selected
+// or filled state. Every text and control-boundary pair is held to WCAG AA
+// (text 4.5:1, boundaries 3:1).
 //
 // All metrics are authored at 100% scale and multiplied by the content scale
 // (glfwGetWindowContentScale) through ui::px(). Fonts are rasterised once per
@@ -18,7 +22,7 @@
 // on the fly, and FontGlobalScale would only blur the bitmaps.
 namespace ui {
 
-// ── Colour roles (sRGB, neutral greys R=G=B) ────────────────────────────────
+// ── Colour roles (sRGB; near-neutral, never more than a few units of tint) ──
 struct Palette {
     ImVec4 bgApp;            // chrome: top bar, inspector, status bar
     ImVec4 bgCanvasDark;     // canvas surround, default
@@ -27,19 +31,23 @@ struct Palette {
     ImVec4 surface1;         // field fill at rest
     ImVec4 surface2;         // hover fill, popups
     ImVec4 surface3;         // pressed / selected fill
-    ImVec4 borderSubtle;     // hairlines and dividers
-    ImVec4 borderDefault;    // popup outlines
-    ImVec4 borderStrong;     // hovered field outline
+    ImVec4 borderSubtle;     // hairlines and dividers (decorative, no contrast target)
+    ImVec4 borderDefault;    // control outlines at rest, toggle tracks, popups: >= 3:1
+    ImVec4 borderStrong;     // hovered field outline: >= 3:1, stronger than default
     ImVec4 textPrimary;      // values, titles
     ImVec4 textSecondary;    // control labels
     ImVec4 textTertiary;     // hints, units, status
     ImVec4 textDisabled;
-    ImVec4 accent;           // ochre: active state only
+    ImVec4 accent;           // active state only: primary, on, drag, focus
     ImVec4 accentHover;
     ImVec4 accentPressed;
-    ImVec4 accentTint;       // slider fill
+    ImVec4 accentTint;       // quiet accent wash (selection)
     ImVec4 accentTintStrong; // slider fill while dragging
     ImVec4 onAccent;         // text on an accent fill
+    ImVec4 highlight;        // selected / filled state: slider value, selected segment, tab
+    ImVec4 highlightHover;   // hovered row in menus and popups
+    ImVec4 highlightStrong;  // slider fill while dragging, pressed row
+    ImVec4 highlightEdge;    // turquoise rule / marker that conveys the state (>= 3:1)
     ImVec4 danger;
     ImVec4 success;
     ImVec4 scrollGrab;
@@ -108,15 +116,15 @@ struct Metrics {
 };
 
 // ── Type scale, in px at 100% ─────────────────────────────────────────────
-// Geist (sans) for words, Geist Mono for numbers only: stb/FreeType in ImGui
-// 1.91 do no OpenType shaping, so tabular figures are unreachable in a
+// Schibsted Grotesk (sans) for words, Geist Mono for numbers only: FreeType in
+// ImGui 1.91 does no OpenType shaping, so tabular figures are unreachable in a
 // proportional face and a value readout would jitter while dragged.
 struct TypeScale {
-    float title = 22.f;      // Geist SemiBold: wordmark, page titles
-    float section = 15.f;    // Geist SemiBold: section headers
-    float body = 14.f;        // Geist Regular: labels, buttons (default font)
-    float bodyStrong = 14.f; // Geist Medium: tabs, primary buttons
-    float caption = 13.f;     // Geist Regular: hints, status bar
+    float title = 22.f;      // SemiBold: wordmark, page titles
+    float section = 15.f;    // SemiBold: section headers
+    float body = 14.f;        // Regular: labels, buttons (default font)
+    float bodyStrong = 14.f; // Medium: tabs, primary buttons
+    float caption = 13.f;     // Regular: hints, status bar
     float mono = 13.f;        // Geist Mono: values, timings
 };
 
