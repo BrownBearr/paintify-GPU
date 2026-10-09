@@ -12,8 +12,8 @@
 // *active state* only (primary action, drag, on, focus -- never a resting
 // fill), and hierarchy carried by type and space rather than boxes.
 //
-// One palette, "Paper": blue for action, turquoise (highlight*) for selected
-// or filled state. Every text and control-boundary pair is held to WCAG AA
+// One palette, "Paper": cerulean blue for action, pale tints of it (highlight*)
+// for selected or filled state. Every text and control-boundary pair is held to WCAG AA
 // (text 4.5:1, boundaries 3:1).
 //
 // All metrics are authored at 100% scale and multiplied by the content scale
@@ -47,7 +47,7 @@ struct Palette {
     ImVec4 highlight;        // selected / filled state: slider value, selected segment, tab
     ImVec4 highlightHover;   // hovered row in menus and popups
     ImVec4 highlightStrong;  // slider fill while dragging, pressed row
-    ImVec4 highlightEdge;    // turquoise rule / marker that conveys the state (>= 3:1)
+    ImVec4 highlightEdge;    // cyan rule / marker that conveys the state (>= 3:1)
     ImVec4 danger;
     ImVec4 success;
     ImVec4 scrollGrab;

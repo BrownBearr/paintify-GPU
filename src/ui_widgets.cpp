@@ -623,9 +623,9 @@ bool Segmented(const char* id, const char* const* items, int count, int* index,
         if (on)
             dl->AddRectFilled(ImVec2(x, p0.y + inset), ImVec2(x + wi, p0.y + h - inset),
                               col(C.highlight), px(M.radiusMd) - inset);
-        if (on)   // the selected segment carries a turquoise edge
+        if (on)   // a soft cyan outline; the bold label carries the state too
             dl->AddRect(ImVec2(x, p0.y + inset), ImVec2(x + wi, p0.y + h - inset),
-                        col(C.highlightEdge), px(M.radiusMd) - inset, 0, 1.f);
+                        col(C.highlightStrong), px(M.radiusMd) - inset, 0, 1.f);
         ImFont* f = on ? F.bodyStrong : F.body;
         const std::string st = fitText(f, items[i], labelEnd(items[i]), wi - px(8.f));
         const float tw = textSize(f, st.c_str()).x;

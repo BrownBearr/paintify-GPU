@@ -2026,6 +2026,13 @@ int main(int argc, char** argv) {
                             ImVec2(ui::px(ui::M.inspectorPadX), ui::px(ui::M.inspectorPadY)));
         ImGui::BeginChild("##scroll", ImVec2(L.insp, 0.f), ImGuiChildFlags_AlwaysUseWindowPadding);
         ImGui::PopStyleVar();
+        // Reserve the scrollbar gutter even when nothing overflows, so Look and
+        // Export lay out at the same width.
+        if (ImGuiWindow* w = ImGui::GetCurrentWindow(); !w->ScrollbarY) {
+            const float g = ImGui::GetStyle().ScrollbarSize;
+            w->WorkRect.Max.x -= g;
+            w->ContentRegionRect.Max.x -= g;
+        }
         ImGui::BeginDisabled(exporting);
         if (inspectorTab == 0) drawLookTab();
         else drawExportTab();

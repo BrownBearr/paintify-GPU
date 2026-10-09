@@ -31,18 +31,12 @@ float g_scale = 1.f;
 // the POST_BUILD copy), with the source tree as a fallback -- the same order
 // the shader loader uses.
 // The UI family: Schibsted Grotesk (SIL OFL 1.1), files <Family>-Regular /
-// -Medium / -SemiBold.ttf. BRUSHKIT_FONT_FAMILY (and, for families not in
-// assets/fonts, BRUSHKIT_FONT_DIR) swap it for side-by-side comparison.
-std::string uiFamily() {
-    if (const char* e = std::getenv("BRUSHKIT_FONT_FAMILY"); e && *e) return e;
-    return "SchibstedGrotesk";
-}
+// -Medium / -SemiBold.ttf.
+std::string uiFamily() { return "SchibstedGrotesk"; }
 
 std::string fontDir(const std::string& family) {
     namespace fs = std::filesystem;
     const std::string probe = family + "-Regular.ttf";
-    if (const char* e = std::getenv("BRUSHKIT_FONT_DIR"); e && *e && fs::exists(fs::path(e) / probe))
-        return e;
 #ifdef _WIN32
     char exe[MAX_PATH] = {};
     if (GetModuleFileNameA(nullptr, exe, MAX_PATH)) {
@@ -249,11 +243,10 @@ void applyStyle(float s) {
 } // namespace
 
 // ── Palette ────────────────────────────────────────────────────────────────
-// "Paper": editorial print. Cool paper white, near-black ink, International
-// Klein-style blue for action (primary, focus, drag, on) and a turquoise
-// "highlight" family for state that is *selected or filled* (slider values,
-// selected segment / tab, hovered rows). Blue says "act", turquoise says
-// "this is the current value".
+// "Paper": editorial print. Cool paper white, near-black ink and one cerulean
+// blue: full strength for action (primary, focus, drag, on), pale tints of the
+// same hue ("highlight") for state that is *selected or filled* (slider
+// values, selected segment / tab, hovered rows).
 //
 // Contrast targets (WCAG 2.x): text 4.5:1 on every surface and highlight it
 // can sit on; disabled text 3:1; control outlines, toggle tracks, popup
@@ -274,16 +267,16 @@ const Palette C = {
     /*textSecondary*/    hex(0x454542),
     /*textTertiary*/     hex(0x5A5A56),
     /*textDisabled*/     hex(0x8A8A85),
-    /*accent*/           hex(0x2438D8),
-    /*accentHover*/      hex(0x3347EA),
-    /*accentPressed*/    hex(0x1A2AB0),
-    /*accentTint*/       hex(0xE3E6FA),
-    /*accentTintStrong*/ hex(0xD6DBF8),
+    /*accent*/           hex(0x0077A6),
+    /*accentHover*/      hex(0x006B96),
+    /*accentPressed*/    hex(0x005F85),
+    /*accentTint*/       hex(0xDDEFF6),
+    /*accentTintStrong*/ hex(0xCFE8F3),
     /*onAccent*/         hex(0xFFFFFF),
-    /*highlight*/        hex(0xD8F2EF),
-    /*highlightHover*/   hex(0xC9EDE9),
-    /*highlightStrong*/  hex(0xB5E6E1),
-    /*highlightEdge*/    hex(0x0B8580),
+    /*highlight*/        hex(0xDFF0F7),
+    /*highlightHover*/   hex(0xCFE8F3),
+    /*highlightStrong*/  hex(0xBCE0EF),
+    /*highlightEdge*/    hex(0x0077A6),
     /*danger*/           hex(0xC21F1F),
     /*success*/          hex(0x12714A),
     /*scrollGrab*/       hex(0xC4C4BF),
