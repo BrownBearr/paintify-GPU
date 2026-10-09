@@ -45,6 +45,13 @@ add_custom_command(TARGET brushkit POST_BUILD
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:brushkit>/fonts")
 install(TARGETS brushkit RUNTIME DESTINATION .)
 install(FILES $<TARGET_RUNTIME_DLLS:brushkit> DESTINATION . OPTIONAL)
+# TARGET_RUNTIME_DLLS lists direct dependencies only, and freetype brings its
+# own (zlib, libpng, bzip2, brotli). vcpkg's applocal step has already copied
+# the whole closure next to the exe, so ship every DLL found there.
+install(CODE "
+    file(GLOB _brushkit_dlls \"$<TARGET_FILE_DIR:brushkit>/*.dll\")
+    file(INSTALL \${_brushkit_dlls} DESTINATION \"\${CMAKE_INSTALL_PREFIX}\")
+")
 install(DIRECTORY shaders DESTINATION .)
 install(DIRECTORY assets/fonts/ DESTINATION fonts)
 install(FILES assets/fonts/OFL.txt DESTINATION licenses RENAME Geist-OFL.txt)
