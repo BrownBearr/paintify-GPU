@@ -6,6 +6,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 namespace ui {
@@ -26,6 +27,22 @@ void drawText(ImDrawList* dl, ImFont* f, float x, float y0, float h, ImU32 c,
               const char* b, const char* e = nullptr) {
     dl->AddText(f, f->FontSize, ImVec2(std::floor(x), std::floor(y0 + (h - f->FontSize) * 0.5f)),
                 c, b, e);
+}
+
+// `[b,e)` cut at the end with "..." so it fits `maxW`; unchanged when it
+// already fits. Cuts on UTF-8 code point boundaries.
+std::string fitText(ImFont* f, const char* b, const char* e, float maxW) {
+    if (!e) e = b + std::strlen(b);
+    std::string full(b, size_t(e - b));
+    if (textSize(f, full.c_str()).x <= maxW) return full;
+    const float dots = textSize(f, "...").x;
+    size_t n = full.size();
+    while (n > 0) {
+        --n;
+        while (n > 0 && (static_cast<unsigned char>(full[n]) & 0xC0) == 0x80) --n;
+        if (textSize(f, full.substr(0, n).c_str()).x + dots <= maxW) break;
+    }
+    return full.substr(0, n) + "...";
 }
 
 struct DisabledFrame { bool disabled; const char* reason; };
@@ -222,20 +239,24 @@ bool scrubCore(const char* label, float* v, float lo, float hi, bool isInt,
     drawText(dl, F.mono, x - valW, p0.y, h, col(scrubbing ? C.accent : C.textPrimary), vtext);
     if (o.unit) drawText(dl, F.caption, x + px(2.f), p0.y, h, col(C.textTertiary), o.unit);
 
-    // Label, clipped so it never runs under the value.
+    // Label, ellipsised so it never runs under the value; the full name is
+    // shown in the tooltip when it had to be cut.
     const char* le = labelEnd(label);
-    const float labelMax = x - valW - px(8.f);
-    dl->PushClipRect(p0, ImVec2(std::max(p0.x, labelMax), p1.y), true);
+    const float labelMax = x - valW - px(8.f) - (p0.x + pad);
+    const std::string shownLabel = fitText(F.body, label, le, std::max(px(16.f), labelMax));
+    const bool labelCut = shownLabel.size() != size_t(le - label) || shownLabel.compare(0, size_t(le - label), label, size_t(le - label)) != 0;
     drawText(dl, F.body, p0.x + pad, p0.y, h,
-             col(hovered || scrubbing ? C.textPrimary : C.textSecondary), label, le);
-    dl->PopClipRect();
+             col(hovered || scrubbing ? C.textPrimary : C.textSecondary), shownLabel.c_str());
     // A changed value gets a quiet dot in the left padding.
     if (o.def && std::fabs(*v - *o.def) > 1e-5f * std::max(1.f, std::fabs(*o.def)))
         dl->AddCircleFilled(ImVec2(p0.x + pad * 0.45f, p0.y + h * 0.5f), px(2.f),
                             col(C.textTertiary));
 
     if (!active) {
-        if (o.help)
+        if (labelCut) {
+            const std::string full(label, size_t(le - label));
+            Tooltip(full.c_str(), o.help ? o.help : nullptr);
+        } else if (o.help)
             Tooltip(o.help, "Drag to adjust, Shift for fine. Click to type. Right-click to reset.");
         else if (o.def)
             Tooltip(nullptr, "Drag to adjust, Shift for fine. Click to type. Right-click to reset.");
@@ -292,21 +313,104 @@ void Hairline(bool fullWidth) {
     ImGui::Dummy(ImVec2(0.f, 1.f));
 }
 
+// The one tooltip. Root cause of the "2 characters wide" bug: the old body
+// pushed a wrap position, but every line was drawn through TextWrapped(),
+// which pushes wrap position 0 ("wrap at the window's right edge"). A
+// tooltip window auto-sizes to its content, so its right edge is the text's
+// own width -- with no content yet, that collapses to a couple of glyphs.
+// Here the wrap width is computed up front (capped at M.tooltipMaxW, shrunk
+// to the text when short) and applied as an explicit local wrap position.
+static void tooltipLine(ImFont* font, const ImVec4& color, const char* text, float wrapW) {
+    ImGui::PushFont(font);
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + wrapW);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+    ImGui::PopFont();
+}
+
+static float tooltipLineWidth(ImFont* font, const char* text, float maxW) {
+    if (!text) return 0.f;
+    ImGui::PushFont(font);
+    const float w = ImGui::CalcTextSize(text, nullptr, false, maxW).x;
+    ImGui::PopFont();
+    return std::min(maxW, std::ceil(w) + 1.f);
+}
+
 static void tooltipBody(const char* text, const char* hint) {
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(10.f), px(8.f)));
+    const float maxW = px(M.tooltipMaxW);
+    const float wrapW = std::max(tooltipLineWidth(F.body, text, maxW),
+                                 tooltipLineWidth(F.caption, hint, maxW));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(px(M.tooltipPadX), px(M.tooltipPadY)));
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, px(M.radiusLg));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(px(4.f), px(4.f)));
     ImGui::PushStyleColor(ImGuiCol_PopupBg, C.surface2);
     ImGui::PushStyleColor(ImGuiCol_Border, C.borderDefault);
+    // Size the window explicitly too, so it can never come out narrower than
+    // its text regardless of how the backend measures it.
+    ImGui::SetNextWindowSizeConstraints(ImVec2(wrapW + 2.f * px(M.tooltipPadX), 0.f),
+                                        ImVec2(FLT_MAX, FLT_MAX));
     if (ImGui::BeginTooltip()) {
-        ImGui::PushTextWrapPos(px(300.f));
-        if (text) TextWrapped(F.body, C.textPrimary, text);
-        if (hint) TextWrapped(F.caption, C.textTertiary, hint);
-        ImGui::PopTextWrapPos();
+        if (text) tooltipLine(F.body, C.textPrimary, text, wrapW);
+        if (hint) tooltipLine(F.caption, C.textSecondary, hint, wrapW);  // tertiary is 2.97:1 on surface2
         ImGui::EndTooltip();
     }
     ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
+}
+
+// One line of text that never wraps mid-word: when it does not fit it is cut
+// in the middle ("C:\Users\...\out_painted.png") and the full text goes in a
+// tooltip.
+void EllipsizedText(ImFont* font, const ImVec4& color, const char* text) {
+    const float avail = std::max(px(40.f), ImGui::GetContentRegionAvail().x);
+    std::string full = text ? text : "";
+    std::string shown = full;
+    if (textSize(font, shown.c_str()).x > avail) {
+        // Binary search for the longest head+tail pair that fits.
+        size_t lo = 0, hi = full.size();
+        while (lo + 1 < hi) {
+            const size_t mid = (lo + hi) / 2;
+            const size_t head = (mid + 1) / 3, tail = mid - head;  // favour the file name
+            std::string t = full.substr(0, head) + "..." + full.substr(full.size() - tail);
+            if (textSize(font, t.c_str()).x <= avail) lo = mid; else hi = mid;
+        }
+        const size_t head = (lo + 1) / 3, tail = lo - head;
+        shown = full.substr(0, head) + "..." + full.substr(full.size() - tail);
+    }
+    Text(font, color, shown.c_str());
+    if (shown != full) {
+        // Path tooltip: break anywhere, since paths have no spaces.
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                                ImVec2(px(M.tooltipPadX), px(M.tooltipPadY)));
+            ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, px(M.radiusLg));
+            ImGui::PushStyleColor(ImGuiCol_PopupBg, C.surface2);
+            ImGui::PushStyleColor(ImGuiCol_Border, C.borderDefault);
+            const float maxW = px(M.tooltipMaxW);
+            ImGui::PushFont(font);
+            const ImVec2 sz = ImGui::CalcTextSize(full.c_str());
+            // Wrap at character level: insert no breaks, but clip each row.
+            ImGui::PopFont();
+            const int perRow = std::max(8, int(maxW / std::max(1.f, sz.x / std::max<size_t>(1, full.size()))));
+            ImGui::SetNextWindowSizeConstraints(ImVec2(std::min(maxW, sz.x) + 2.f * px(M.tooltipPadX), 0.f),
+                                                ImVec2(FLT_MAX, FLT_MAX));
+            if (ImGui::BeginTooltip()) {
+                ImGui::PushFont(font);
+                ImGui::PushStyleColor(ImGuiCol_Text, C.textPrimary);
+                for (size_t i = 0; i < full.size(); i += size_t(perRow)) {
+                    const std::string row = full.substr(i, size_t(perRow));
+                    ImGui::TextUnformatted(row.c_str());
+                }
+                ImGui::PopStyleColor();
+                ImGui::PopFont();
+                ImGui::EndTooltip();
+            }
+            ImGui::PopStyleColor(2);
+            ImGui::PopStyleVar(2);
+        }
+    }
 }
 
 void Tooltip(const char* text, const char* hint) {
@@ -454,8 +558,10 @@ bool Toggle(const char* label, bool* v, const char* help) {
     }
     const bool hovered = ImGui::IsItemHovered();
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    const std::string tl = fitText(F.body, label, labelEnd(label),
+                                   w - px(M.toggleW) - px(12.f));
     drawText(dl, F.body, p0.x, p0.y, h, col(hovered ? C.textPrimary : C.textSecondary),
-             label, labelEnd(label));
+             tl.c_str());
 
     const float tw = px(M.toggleW), th = px(M.toggleH);
     const ImVec2 t0(p0.x + w - tw, p0.y + (h - th) * 0.5f);
@@ -513,10 +619,10 @@ bool Segmented(const char* id, const char* const* items, int count, int* index,
             dl->AddRectFilled(ImVec2(x, p0.y + inset), ImVec2(x + wi, p0.y + h - inset),
                               col(C.surface3), px(M.radiusMd) - inset);
         ImFont* f = on ? F.bodyStrong : F.body;
-        const float tw = textSize(f, items[i], labelEnd(items[i])).x;
+        const std::string st = fitText(f, items[i], labelEnd(items[i]), wi - px(8.f));
+        const float tw = textSize(f, st.c_str()).x;
         drawText(dl, f, x + (wi - tw) * 0.5f, p0.y, h,
-                 col(on || hovered ? C.textPrimary : C.textSecondary), items[i],
-                 labelEnd(items[i]));
+                 col(on || hovered ? C.textPrimary : C.textSecondary), st.c_str());
         x += wi;
     }
     ImGui::SetCursorScreenPos(p0);
@@ -553,19 +659,24 @@ bool BeginSelect(const char* label, const char* preview, float width, float maxP
     const float chevX = p1.x - pad - px(4.f);
     DrawChevron(dl, ImVec2(chevX, p0.y + h * 0.5f), px(7.f), true, col(C.textTertiary));
     const float valueRight = chevX - px(12.f);
+    const float room = valueRight - (p0.x + pad);
     if (hasLabel) {
-        const float lw = textSize(F.body, label, le).x;
+        // The label keeps at most 55% of the field; the value gets the rest.
+        const float lw0 = textSize(F.body, label, le).x;
+        const std::string ls = fitText(F.body, label, le, std::min(lw0, room * 0.55f));
+        const float lw = textSize(F.body, ls.c_str()).x;
         drawText(dl, F.body, p0.x + pad, p0.y, h, col(hovered ? C.textPrimary : C.textSecondary),
-                 label, le);
+                 ls.c_str());
         const float vx0 = p0.x + pad + lw + px(12.f);
-        const float vw = textSize(F.body, preview).x;
-        dl->PushClipRect(ImVec2(vx0, p0.y), ImVec2(valueRight, p1.y), true);
-        drawText(dl, F.body, std::max(vx0, valueRight - vw), p0.y, h, col(C.textPrimary), preview);
-        dl->PopClipRect();
+        const std::string vs = fitText(F.body, preview, nullptr, std::max(px(16.f), valueRight - vx0));
+        const float vw = textSize(F.body, vs.c_str()).x;
+        drawText(dl, F.body, std::max(vx0, valueRight - vw), p0.y, h, col(C.textPrimary), vs.c_str());
+        if (hovered && (vs != preview || ls.size() != size_t(le - label)))
+            Tooltip((std::string(label, size_t(le - label)) + ": " + preview).c_str());
     } else {
-        dl->PushClipRect(p0, ImVec2(valueRight, p1.y), true);
-        drawText(dl, F.body, p0.x + pad, p0.y, h, col(C.textPrimary), preview);
-        dl->PopClipRect();
+        const std::string vs = fitText(F.body, preview, nullptr, std::max(px(16.f), room));
+        drawText(dl, F.body, p0.x + pad, p0.y, h, col(C.textPrimary), vs.c_str());
+        if (hovered && vs != preview) Tooltip(preview);
     }
 
     ImGui::SetNextWindowPos(ImVec2(p0.x, p1.y + px(4.f)));
@@ -600,10 +711,13 @@ bool SelectItem(const char* text, bool selected, const char* secondary) {
         dl->AddCircleFilled(ImVec2(p0.x + px(11.f), p0.y + (secondary ? px(15.f) : h * 0.5f)),
                             px(3.f), col(C.accent));
     if (secondary) {
-        drawText(dl, F.body, tx, p0.y + px(4.f), px(22.f), col(C.textPrimary), text, labelEnd(text));
-        drawText(dl, F.caption, tx, p0.y + px(22.f), px(18.f), col(C.textTertiary), secondary);
+        const std::string t1 = fitText(F.body, text, labelEnd(text), w - px(24.f) - px(10.f));
+        const std::string t2 = fitText(F.caption, secondary, nullptr, w - px(24.f) - px(10.f));
+        drawText(dl, F.body, tx, p0.y + px(4.f), px(22.f), col(C.textPrimary), t1.c_str());
+        drawText(dl, F.caption, tx, p0.y + px(22.f), px(18.f), col(C.textTertiary), t2.c_str());
     } else {
-        drawText(dl, F.body, tx, p0.y, h, col(C.textPrimary), text, labelEnd(text));
+        const std::string t1 = fitText(F.body, text, labelEnd(text), w - px(24.f) - px(10.f));
+        drawText(dl, F.body, tx, p0.y, h, col(C.textPrimary), t1.c_str());
     }
     if (clicked) ImGui::CloseCurrentPopup();
     return clicked;

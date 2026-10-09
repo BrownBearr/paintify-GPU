@@ -90,6 +90,8 @@ struct Metrics {
     float progressH = 2.f;        // export progress line under the top bar
     float iconStroke = 1.5f;      // drawn icons (chevrons, handle arrows)
     float handleR = 14.f;         // split-view grab handle
+    float tooltipMaxW = 300.f;    // wrap width cap, about 38 characters of body text
+    float tooltipPadX = 10.f, tooltipPadY = 8.f;
     float popoverGap = 6.f;       // popover offset above the status bar
     float popoverPadX = 16.f, popoverPadY = 14.f;
     float cardPadX = 20.f, cardPadY = 18.f;

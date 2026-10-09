@@ -19,6 +19,8 @@ enum class ButtonKind { Primary, Secondary, Ghost };
 void Gap(float px100);                         // vertical space at 100% scale
 void Text(ImFont* font, const ImVec4& color, const char* text);
 void TextWrapped(ImFont* font, const ImVec4& color, const char* text);
+// Single line, middle-ellipsised to the available width; full text in a tooltip.
+void EllipsizedText(ImFont* font, const ImVec4& color, const char* text);
 void Caption(const char* fmt, ...) IM_FMTARGS(1);   // wrapped, tertiary, 12 px
 void Hairline(bool fullWidth = false);         // 1 px border.subtle
 // A tooltip for the last item, after the usual hover delay. `hint` is a

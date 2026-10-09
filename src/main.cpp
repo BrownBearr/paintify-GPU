@@ -1873,7 +1873,7 @@ int main(int argc, char** argv) {
                          exportPreview.example.c_str());
                 ui::TextWrapped(ui::F.body, ui::C.textPrimary, line);
             }
-            ui::TextWrapped(ui::F.mono, ui::C.textSecondary, exportPreview.path.c_str());
+            ui::EllipsizedText(ui::F.mono, ui::C.textSecondary, exportPreview.path.c_str());
             if (exportPreview.existing > 0) {
                 ui::Gap(ui::M.s1);
                 if (gui.kind == InputKind::Images)
