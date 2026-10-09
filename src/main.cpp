@@ -1346,7 +1346,7 @@ int main(int argc, char** argv) {
 
         // ── A. Brush ────────────────────────────────────────────────
         if (ui::Section("Brush", true, true)) {
-            if (ui::BeginSelect("Brush##picker", sl[size_t(guiStyle)].name, 0.f, ui::px(460.f))) {
+            if (ui::BeginSelect("Brush##picker", sl[size_t(guiStyle)].name, 0.f, ui::px(ui::M.pickerMaxH))) {
                 for (int i = 0; i < int(sl.size()); ++i) {
                     char sub[160];
                     if (i == 0) snprintf(sub, sizeof(sub), "Original tile brush");
@@ -1394,7 +1394,7 @@ int main(int argc, char** argv) {
                         match = i;
                         if (i == presetIdx) break;
                     }
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
                 if (ui::BeginSelect("Stroke size", match >= 0 ? kPresets[match].name : "Custom")) {
                     for (int i = 0; i < kPresetCount; ++i) {
                         char sub[64];
@@ -1432,7 +1432,7 @@ int main(int argc, char** argv) {
             }
 
             if (guiStyle > 0) {
-                ui::Gap(8.f);
+                ui::Gap(ui::M.s2);
                 sf("Width", &s.widthScale, 0.3f, 2.5f, "%.2f", &brushDef.widthScale,
                    "Stroke width relative to the brush size.", "\xC3\x97");
                 sf("Bristle count", &s.bristles, 0.f, 60.f, "%.0f", &brushDef.bristles,
@@ -1461,7 +1461,7 @@ int main(int argc, char** argv) {
                        "Smears the paint below along each stroke. Different from Wet smear, "
                        "which acts on the finished painting.");
                 }
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
                 if (ui::Button("Reset brush")) { restyle(); lookDirty = true; }
                 ui::Tooltip("Restore every brush-mark value to this brush's defaults.");
                 pipe.setStyle(s);
@@ -1507,7 +1507,7 @@ int main(int argc, char** argv) {
                     cfg.layerSpecs.clear();
                     settingsChanged = true;
                 }
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
             }
             sf("Detail", &params.threshold, 1.f, 150.f, "%.0f", &kDefP.threshold,
                "Lower adds more strokes where the painting differs from the photo.");
@@ -1516,7 +1516,7 @@ int main(int argc, char** argv) {
             {
                 // Min and max as a pair; each field's range stops at the
                 // other's value so min can no longer exceed max.
-                const float half = (ImGui::GetContentRegionAvail().x - ui::px(8.f)) * 0.5f;
+                const float half = (ImGui::GetContentRegionAvail().x - ui::px(ui::M.s2)) * 0.5f;
                 ui::ScrubOpts o;
                 o.format = "%.0f";
                 o.width = half;
@@ -1524,7 +1524,7 @@ int main(int argc, char** argv) {
                 o.help = "Shortest stroke, in steps of about one brush size.";
                 settingsChanged |= ui::ScrubFloat("Min length", &params.minStrokeLength, 1.f,
                                                   std::max(1.f, params.maxStrokeLength), o);
-                ImGui::SameLine(0.f, ui::px(8.f));
+                ImGui::SameLine(0.f, ui::px(ui::M.s2));
                 o.def = &kDefP.maxStrokeLength;
                 o.help = "Longest stroke, in steps of about one brush size.";
                 settingsChanged |= ui::ScrubFloat("Max length", &params.maxStrokeLength,
@@ -1788,7 +1788,7 @@ int main(int argc, char** argv) {
                 ui::TextWrapped(ui::F.body, ui::C.textSecondary,
                                 "Open an image, a video or a folder of images first. The demo "
                                 "image can't be exported.");
-                ui::Gap(8.f);
+                ui::Gap(ui::M.s2);
                 if (ui::Button("Open image...", ui::ButtonKind::Secondary)) openImageDialog();
                 ImGui::SameLine();
                 if (ui::Button("Open video...")) openVideoDialog();
@@ -1799,16 +1799,16 @@ int main(int argc, char** argv) {
                 ui::Text(ui::F.body, ui::C.textSecondary, "Save to");
                 snprintf(buf, sizeof(buf), "%s", gui.videoOut.c_str());
                 if (ui::InputField("##videoOut", buf, sizeof(buf), 0, nullptr,
-                                   ImGui::GetContentRegionAvail().x - bw - ui::px(8.f)))
+                                   ImGui::GetContentRegionAvail().x - bw - ui::px(ui::M.s2)))
                     gui.videoOut = buf;
-                ImGui::SameLine(0.f, ui::px(8.f));
+                ImGui::SameLine(0.f, ui::px(ui::M.s2));
                 if (ui::Button("Choose...##video")) {
                     const std::string p = filedialog::saveFile(
                         "Save painted video as", kVideoFilter,
                         fileName(gui.videoOut).c_str(), "mp4");
                     if (!p.empty()) gui.videoOut = p;
                 }
-                ui::Gap(8.f);
+                ui::Gap(ui::M.s2);
                 // CRF runs the wrong way for a slider (lower = better), so the
                 // field shows quality left-to-right and stores CRF.
                 int q = 42 - gui.crf;
@@ -1826,7 +1826,7 @@ int main(int argc, char** argv) {
                 if (ui::Toggle("Include audio", &audio)) gui.keepAudio = audio;
                 ui::EndDisabledWhy();
                 if (!temporal) {
-                    ui::Gap(4.f);
+                    ui::Gap(ui::M.s1);
                     ui::Notice(ui::Tone::Accent, "Steady strokes is off, so every frame is "
                                                  "painted from scratch and the video will "
                                                  "shimmer.");
@@ -1844,19 +1844,19 @@ int main(int argc, char** argv) {
                 ui::Text(ui::F.body, ui::C.textSecondary, "Save to folder");
                 snprintf(buf, sizeof(buf), "%s", gui.outDir.c_str());
                 if (ui::InputField("##outDir", buf, sizeof(buf), 0, nullptr,
-                                   ImGui::GetContentRegionAvail().x - bw - ui::px(8.f)))
+                                   ImGui::GetContentRegionAvail().x - bw - ui::px(ui::M.s2)))
                     gui.outDir = buf;
-                ImGui::SameLine(0.f, ui::px(8.f));
+                ImGui::SameLine(0.f, ui::px(ui::M.s2));
                 if (ui::Button("Choose...##folder")) {
                     const std::string p = filedialog::pickFolder("Choose where to save");
                     if (!p.empty()) gui.outDir = p;
                 }
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
                 char sbuf[128];
                 snprintf(sbuf, sizeof(sbuf), "%s", gui.suffix.c_str());
                 if (ui::InputField("File name ending##suffix", sbuf, sizeof(sbuf)))
                     gui.suffix = sbuf;
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
                 ui::Text(ui::F.body, ui::C.textSecondary, "Format");
                 const char* kFormats[] = {"png", "jpg", "bmp", "tga"};
                 int fi = 0;
@@ -1875,7 +1875,7 @@ int main(int argc, char** argv) {
             }
             ui::TextWrapped(ui::F.mono, ui::C.textSecondary, exportPreview.path.c_str());
             if (exportPreview.existing > 0) {
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
                 if (gui.kind == InputKind::Images)
                     ui::Notice(ui::Tone::Danger, "%d of %d files already exist and will be "
                                                  "replaced.", exportPreview.existing,
@@ -1885,7 +1885,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        ui::Gap(20.f);
+        ui::Gap(ui::M.s5);
         char label[64];
         if (exportPreview.existing > 0 && gui.kind != InputKind::None)
             snprintf(label, sizeof(label), "Export and replace");
@@ -1901,7 +1901,7 @@ int main(int argc, char** argv) {
 
         if (!lastExportTarget.empty() && lastExportOk && lastExportFromPanel &&
             gui.kind != InputKind::None) {
-            ui::Gap(12.f);
+            ui::Gap(ui::M.s3);
             if (ui::Button("Show in folder")) filedialog::reveal(lastExportTarget);
         }
     };
@@ -1919,10 +1919,10 @@ int main(int argc, char** argv) {
     auto drawTopBar = [&](const Layout& L, bool exporting) {
         const float h = L.top;
         beginRegion("##topbar", ImVec2(0.f, 0.f), ImVec2(L.W, h),
-                    ImVec2(ui::px(16.f), (h - ui::px(ui::M.controlH)) * 0.5f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(8.f), 0.f));
+                    ImVec2(ui::px(ui::M.barPadX), (h - ui::px(ui::M.controlH)) * 0.5f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(ui::M.s2), 0.f));
         ui::BarText(ui::F.section, ui::C.textPrimary, "Brushkit");
-        ImGui::SameLine(0.f, ui::px(20.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s5));
 
         ImGui::BeginDisabled(exporting);
         if (ui::BeginMenuButton("Open", ui::ButtonKind::Secondary)) {
@@ -1931,16 +1931,16 @@ int main(int argc, char** argv) {
             if (ui::MenuItem("Images as a batch...")) openImagesDialog();
             if (ui::MenuItem("Folder as a batch...")) openFolderDialog();
             ui::MenuSeparator();
-            ImGui::Indent(ui::px(10.f));
+            ImGui::Indent(ui::px(ui::M.menuPadX));
             ui::Text(ui::F.caption, ui::C.textTertiary, "Or drop files or a folder on the window");
-            ImGui::Unindent(ui::px(10.f));
-            ui::Gap(6.f);
+            ImGui::Unindent(ui::px(ui::M.menuPadX));
+            ui::Gap(ui::M.s2);
             ui::EndMenuButton();
         }
         ImGui::EndDisabled();
 
         // Source: name, then its size in mono.
-        ImGui::SameLine(0.f, ui::px(16.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s4));
         std::string src = sourceLabel();
         if (src.size() > 42) src = src.substr(0, 26) + "..." + src.substr(src.size() - 13);
         ui::BarText(ui::F.body, gui.kind == InputKind::None ? ui::C.textSecondary
@@ -1956,11 +1956,11 @@ int main(int argc, char** argv) {
                      gui.video.height, gui.video.fps);
         else
             snprintf(dims, sizeof(dims), "%d\xC3\x97%d", pipe.width(), pipe.height());
-        ImGui::SameLine(0.f, ui::px(10.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s3));
         ui::BarText(ui::F.mono, ui::C.textTertiary, dims);
 
         // Look: name and a modified dot, with Save / Open in its menu.
-        ImGui::SameLine(0.f, ui::px(20.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s5));
         std::string look = lookName.empty() ? "Untitled" : lookName;
         if (lookDirty) look += "  \xE2\x80\xA2";
         ImGui::BeginDisabled(exporting);
@@ -1968,10 +1968,10 @@ int main(int argc, char** argv) {
             if (ui::MenuItem("Save look...", "Ctrl+S")) saveLook();
             if (ui::MenuItem("Open look...", "Ctrl+Shift+O")) loadLook();
             ui::MenuSeparator();
-            ImGui::Indent(ui::px(10.f));
+            ImGui::Indent(ui::px(ui::M.menuPadX));
             ui::Text(ui::F.caption, ui::C.textTertiary, "A look stores every setting (.sbr)");
-            ImGui::Unindent(ui::px(10.f));
-            ui::Gap(6.f);
+            ImGui::Unindent(ui::px(ui::M.menuPadX));
+            ui::Gap(ui::M.s2);
             ui::EndMenuButton();
         }
         ImGui::EndDisabled();
@@ -1981,17 +1981,16 @@ int main(int argc, char** argv) {
         const char* kViewTips[] = {"The painting (V cycles views)",
                                    "Drag the divider to compare (V)",
                                    "The untouched source (hold B to peek)"};
-        float segW = ui::px(4.f);
-        for (const char* v : kViews) segW += ui::TextWidth(ui::F.body, v) + ui::px(20.f);
+        const float segW = ui::SegmentedWidth(kViews, 3);
         const float actionW = exporting ? ui::ButtonWidth("Cancel export")
                                         : ui::ButtonWidth("Export...", ui::ButtonKind::Primary);
-        const float right = L.W - ui::px(16.f);
-        const float segX = right - actionW - ui::px(16.f) - segW;
+        const float right = L.W - ui::px(ui::M.s4);
+        const float segX = right - actionW - ui::px(ui::M.s4) - segW;
         ImGui::SameLine(segX);
         int vi = view == ViewMode::Painted ? 0 : view == ViewMode::Split ? 1 : 2;
         if (ui::Segmented("##view", kViews, 3, &vi, 0.f, 0.f, kViewTips))
             view = vi == 0 ? ViewMode::Painted : vi == 1 ? ViewMode::Split : ViewMode::Source;
-        ImGui::SameLine(0.f, ui::px(16.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s4));
         if (exporting) {
             if (ui::Button("Cancel export")) gui.cancel = true;
         } else {
@@ -2007,7 +2006,7 @@ int main(int argc, char** argv) {
         if (exporting) {
             const jobs::Progress& p = gui.progress;
             const float frac = p.total > 0 ? float(double(p.done) / double(p.total)) : 0.f;
-            ui::DrawProgress(dl, ImVec2(0.f, h - ui::px(2.f)), ImVec2(L.W, h), frac, p.total <= 0);
+            ui::DrawProgress(dl, ImVec2(0.f, h - ui::px(ui::M.progressH)), ImVec2(L.W, h), frac, p.total <= 0);
         }
         ImGui::End();
     };
@@ -2031,7 +2030,7 @@ int main(int argc, char** argv) {
         if (inspectorTab == 0) drawLookTab();
         else drawExportTab();
         ImGui::EndDisabled();
-        ui::Gap(24.f);
+        ui::Gap(ui::M.s5);
         ImGui::EndChild();
         ImGui::End();
 
@@ -2066,14 +2065,14 @@ int main(int argc, char** argv) {
     auto drawStrip = [&](const Layout& L, bool exporting) {
         if (L.strip <= 0.f) return;
         beginRegion("##strip", ImVec2(0.f, L.c1.y), ImVec2(L.c1.x, L.strip),
-                    ImVec2(ui::px(16.f), (L.strip - ui::px(ui::M.controlH)) * 0.5f));
+                    ImVec2(ui::px(ui::M.s4), (L.strip - ui::px(ui::M.controlH)) * 0.5f));
         ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(0.f, L.c1.y),
                                                   ImVec2(L.c1.x, L.c1.y + 1.f),
                                                   ui::col(ui::C.borderSubtle));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(8.f), 0.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(ui::M.s2), 0.f));
         ImGui::BeginDisabled(exporting);
         if (gui.kind == InputKind::Video) {
-            if (ui::Button(playing ? "Pause" : "Play", ui::ButtonKind::Secondary, ui::px(72.f))) {
+            if (ui::Button(playing ? "Pause" : "Play", ui::ButtonKind::Secondary, ui::px(ui::M.playButtonW))) {
                 if (!playing) startPlay();
                 else stopPlay();
             }
@@ -2098,7 +2097,7 @@ int main(int argc, char** argv) {
             ui::ScrubOpts o;
             o.format = "%.2f";
             o.valueText = t;
-            o.width = std::max(ui::px(120.f), ImGui::GetContentRegionAvail().x - infoW - ui::px(16.f));
+            o.width = std::max(ui::px(ui::M.scrubMinW), ImGui::GetContentRegionAvail().x - infoW - ui::px(ui::M.s4));
             bool released = false;
             o.released = &released;
             o.help = "Preview frame. The clip seeks when you let go.";
@@ -2110,31 +2109,31 @@ int main(int argc, char** argv) {
                 gui.previewRequested = gui.previewAt;
                 gui.previewDelay = 0;
             }
-            ImGui::SameLine(0.f, ui::px(16.f));
+            ImGui::SameLine(0.f, ui::px(ui::M.s4));
             ui::BarText(ui::F.mono, ui::C.textTertiary, info);
         } else if (gui.kind == InputKind::Images) {
             ui::BarText(ui::F.body, ui::C.textSecondary, "Batch");
-            ImGui::SameLine(0.f, ui::px(12.f));
+            ImGui::SameLine(0.f, ui::px(ui::M.s3));
             char n[64];
             snprintf(n, sizeof(n), "%zu images", gui.queue.size());
             ui::BarText(ui::F.mono, ui::C.textPrimary, n);
-            ImGui::SameLine(0.f, ui::px(12.f));
+            ImGui::SameLine(0.f, ui::px(ui::M.s3));
             if (!gui.queue.empty()) {
                 const std::string prev = "Previewing " + fileName(gui.queue.front());
                 ui::BarText(ui::F.caption, ui::C.textTertiary, prev.c_str());
-                ImGui::SameLine(0.f, ui::px(16.f));
+                ImGui::SameLine(0.f, ui::px(ui::M.s4));
             }
             if (ui::BeginMenuButton("List", ui::ButtonKind::Ghost)) {
                 for (size_t i = 0; i < gui.queue.size() && i < 200; ++i) {
-                    ImGui::Indent(ui::px(10.f));
+                    ImGui::Indent(ui::px(ui::M.menuPadX));
                     ui::BarText(ui::F.body, i == 0 ? ui::C.textPrimary : ui::C.textSecondary,
                                 fileName(gui.queue[i]).c_str());
-                    ImGui::Unindent(ui::px(10.f));
+                    ImGui::Unindent(ui::px(ui::M.menuPadX));
                 }
                 if (gui.queue.size() > 200) {
-                    ImGui::Indent(ui::px(10.f));
+                    ImGui::Indent(ui::px(ui::M.menuPadX));
                     ui::Text(ui::F.caption, ui::C.textTertiary, "...and more");
-                    ImGui::Unindent(ui::px(10.f));
+                    ImGui::Unindent(ui::px(ui::M.menuPadX));
                 }
                 ui::EndMenuButton();
             }
@@ -2160,16 +2159,16 @@ int main(int argc, char** argv) {
             char b[64];
             snprintf(b, sizeof(b), fmt, v);
             ui::Text(ui::F.caption, ui::C.textSecondary, k);
-            ImGui::SameLine(ui::px(150.f));
+            ImGui::SameLine(ui::px(ui::M.keyColumnW));
             ui::Text(ui::F.mono, ui::C.textPrimary, b);
         };
         ui::Text(ui::F.section, ui::C.textPrimary, "Diagnostics");
-        ui::Gap(6.f);
+        ui::Gap(ui::M.s2);
         char b[128];
         snprintf(b, sizeof(b), "%u seeds  \xC2\xB7  %u drawn  \xC2\xB7  %.1f pts/stroke",
                  pipe.lastStrokeCount(), pipe.lastDrawnCount(), pipe.lastMeanPoints());
         ui::Text(ui::F.mono, ui::C.textPrimary, b);
-        ui::Gap(4.f);
+        ui::Gap(ui::M.s1);
         row("GPU total", "%.2f ms", pipe.msTotal());
         row("Frame rate", "%.0f fps", pipe.msTotal() > 0.0 ? 1000.0 / pipe.msTotal() : 0.0);
         row("Reference", "%.2f ms", pipe.msReference());
@@ -2190,17 +2189,17 @@ int main(int argc, char** argv) {
                 ui::Text(ui::F.mono, ui::C.textSecondary, b);
             }
         }
-        ui::Gap(8.f);
+        ui::Gap(ui::M.s2);
         ui::Text(ui::F.caption, ui::C.textTertiary, shaderMsg.c_str());
         ui::TextWrapped(ui::F.caption, ui::C.textTertiary, ("Fonts: " + ui::F.source).c_str());
-        ui::Gap(6.f);
+        ui::Gap(ui::M.s2);
         if (ui::Button("Reload shaders")) reloadShaders();
         ui::Tooltip(nullptr, "F5");
     };
 
     auto drawShortcuts = [&]() {
         ui::Text(ui::F.section, ui::C.textPrimary, "Shortcuts");
-        ui::Gap(6.f);
+        ui::Gap(ui::M.s2);
         const char* rows[][2] = {
             {"Ctrl+O", "Open image"},          {"Ctrl+S", "Save look"},
             {"Ctrl+Shift+O", "Open look"},     {"Ctrl+E", "Export panel"},
@@ -2212,10 +2211,10 @@ int main(int argc, char** argv) {
         };
         for (const auto& r : rows) {
             ui::Text(ui::F.mono, ui::C.textPrimary, r[0]);
-            ImGui::SameLine(ui::px(140.f));
+            ImGui::SameLine(ui::px(ui::M.keyColumnW));
             ui::Text(ui::F.body, ui::C.textSecondary, r[1]);
         }
-        ui::Gap(6.f);
+        ui::Gap(ui::M.s2);
         ui::Text(ui::F.caption, ui::C.textTertiary,
                  "Esc closes menus. During export, press it twice to cancel.");
     };
@@ -2223,11 +2222,11 @@ int main(int argc, char** argv) {
     auto drawStatusBar = [&](const Layout& L, bool exporting) {
         const float h = L.status;
         beginRegion("##status", ImVec2(0.f, L.H - h), ImVec2(L.W, h),
-                    ImVec2(ui::px(12.f), (h - ui::px(ui::M.controlH)) * 0.5f));
+                    ImVec2(ui::px(ui::M.statusPadX), (h - ui::px(ui::M.controlH)) * 0.5f));
         ImDrawList* dl = ImGui::GetWindowDrawList();
         dl->AddRectFilled(ImVec2(0.f, L.H - h), ImVec2(L.W, L.H - h + 1.f),
                           ui::col(ui::C.borderSubtle));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(4.f), 0.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(ui::M.s1), 0.f));
 
         // ── right cluster, measured first so the message can be clipped ──
         char zoomText[32], dimsText[48], perfText[64];
@@ -2246,19 +2245,18 @@ int main(int argc, char** argv) {
         const char* kBackdrops[] = {"Dark", "Gray", "White"};
         const char* kBackdropTips[] = {"Dark surround", "18% grey surround, for judging values",
                                        "Paper-white surround"};
-        float bdW = ui::px(4.f);
-        for (const char* b : kBackdrops) bdW += ui::TextWidth(ui::F.body, b) + ui::px(20.f);
-        const float linkPad = ui::px(12.f), gap = ui::px(4.f);
+        const float bdW = ui::SegmentedWidth(kBackdrops, 3);
+        const float linkPad = ui::px(ui::M.s3), gap = ui::px(ui::M.s1);
         const float rightW = ui::TextWidth(ui::F.mono, zoomText) + linkPad + gap +
                              ui::TextWidth(ui::F.caption, "Fit") + linkPad + gap +
-                             ui::TextWidth(ui::F.caption, "1:1") + linkPad + ui::px(16.f) +
-                             ui::TextWidth(ui::F.mono, dimsText) + ui::px(16.f) +
-                             ui::TextWidth(ui::F.mono, perfText) + linkPad + ui::px(16.f) +
-                             bdW + ui::px(12.f) + ui::TextWidth(ui::F.body, "?") + linkPad;
-        const float rightX = L.W - ui::px(12.f) - rightW;
+                             ui::TextWidth(ui::F.caption, "1:1") + linkPad + ui::px(ui::M.s4) +
+                             ui::TextWidth(ui::F.mono, dimsText) + ui::px(ui::M.s4) +
+                             ui::TextWidth(ui::F.mono, perfText) + linkPad + ui::px(ui::M.s4) +
+                             bdW + ui::px(ui::M.s3) + ui::TextWidth(ui::F.body, "?") + linkPad;
+        const float rightX = L.W - ui::px(ui::M.s3) - rightW;
 
         // ── left: export progress, or the latest message ──
-        ImGui::PushClipRect(ImVec2(0.f, L.H - h), ImVec2(std::max(0.f, rightX - ui::px(16.f)), L.H),
+        ImGui::PushClipRect(ImVec2(0.f, L.H - h), ImVec2(std::max(0.f, rightX - ui::px(ui::M.s4)), L.H),
                             true);
         if (exporting) {
             const jobs::Progress& p = gui.progress;
@@ -2279,14 +2277,14 @@ int main(int argc, char** argv) {
             const bool success = !gui.statusIsError && gui.status == successStatus;
             const ImVec4& dot = gui.statusIsError ? ui::C.danger
                               : success ? ui::C.success : ui::C.textTertiary;
-            dl->AddCircleFilled(ImVec2(p.x + ui::px(4.f), p.y + ui::px(ui::M.controlH) * 0.5f),
-                                ui::px(3.f), ui::col(dot));
-            ImGui::Dummy(ImVec2(ui::px(12.f), ui::px(ui::M.controlH)));
+            dl->AddCircleFilled(ImVec2(p.x + ui::px(ui::M.s1), p.y + ui::px(ui::M.controlH) * 0.5f),
+                                ui::px(ui::M.dotR), ui::col(dot));
+            ImGui::Dummy(ImVec2(ui::px(ui::M.s3), ui::px(ui::M.controlH)));
             ImGui::SameLine();
             // Long messages (paths) are shortened in the middle so the links
             // after them stay reachable; the tooltip has the whole text.
             const float links = ui::px(success ? 130.f : 30.f);
-            const float avail = rightX - ui::px(32.f) - (ImGui::GetCursorScreenPos().x) - links;
+            const float avail = rightX - ui::px(ui::M.s6) - (ImGui::GetCursorScreenPos().x) - links;
             std::string msg = gui.status;
             if (ui::TextWidth(ui::F.caption, msg.c_str()) > avail && msg.size() > 8) {
                 size_t keep = msg.size();
@@ -2301,11 +2299,11 @@ int main(int argc, char** argv) {
                         msg.c_str());
             ui::Tooltip(gui.status.c_str());
             if (success && lastExportOk && !lastExportTarget.empty()) {
-                ImGui::SameLine(0.f, ui::px(8.f));
+                ImGui::SameLine(0.f, ui::px(ui::M.s2));
                 if (ui::BarLink(ui::F.caption, ui::C.textSecondary, "##reveal", "Show in folder"))
                     filedialog::reveal(lastExportTarget);
             }
-            ImGui::SameLine(0.f, ui::px(4.f));
+            ImGui::SameLine(0.f, ui::px(ui::M.s1));
             if (ui::BarLink(ui::F.caption, ui::C.textTertiary, "##dismiss", "\xC3\x97"))
                 gui.status.clear();
             ui::Tooltip("Dismiss");
@@ -2326,40 +2324,43 @@ int main(int argc, char** argv) {
         if (ui::BarLink(ui::F.caption, ui::C.textTertiary, "##1to1", "1:1") && fit > 0.f)
             viewCtl.xf.zoom = 1.f / fit;
         ui::Tooltip("Actual pixels: judge brush texture here", "1");
-        ImGui::SameLine(0.f, ui::px(16.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s4));
         ui::BarText(ui::F.mono, ui::C.textTertiary, dimsText);
-        ImGui::SameLine(0.f, ui::px(16.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s4));
         const bool slow = pipe.msTotal() > 33.0;
         if (ui::BarLink(ui::F.mono, slow ? ui::C.accent : ui::C.textTertiary, "##perf", perfText))
             ImGui::OpenPopup("##diag");
         ui::Tooltip(slow ? "GPU time per frame is above 33 ms. Refinement and edge-aware "
                            "smoothing are the usual cost."
                          : "GPU time per frame and strokes drawn. Click for diagnostics.");
-        ImGui::SameLine(0.f, ui::px(16.f));
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ui::px(3.f));
-        if (ui::Segmented("##backdrop", kBackdrops, 3, &backdrop, 0.f, ui::px(22.f), kBackdropTips))
-            {}
-        ImGui::SameLine(0.f, ui::px(12.f));
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ui::px(3.f));
+        ImGui::SameLine(0.f, ui::px(ui::M.s4));
+        const float compactInset = (ui::px(ui::M.controlH) - ui::px(ui::M.compactH)) * 0.5f;
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + compactInset);
+        ui::Segmented("##backdrop", kBackdrops, 3, &backdrop, 0.f, ui::px(ui::M.compactH),
+                      kBackdropTips);
+        ImGui::SameLine(0.f, ui::px(ui::M.s3));
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - compactInset);
         if (ui::BarLink(ui::F.body, ui::C.textSecondary, "##help", "?"))
             ImGui::OpenPopup("##shortcuts");
         ui::Tooltip("Keyboard shortcuts");
 
         // Popovers open upwards from the status bar.
         auto popover = [&](const char* id, float width, const std::function<void()>& body) {
-            ImGui::SetNextWindowPos(ImVec2(L.W - ui::px(12.f), L.H - h - ui::px(6.f)),
+            ImGui::SetNextWindowPos(ImVec2(L.W - ui::px(ui::M.statusPadX),
+                                           L.H - h - ui::px(ui::M.popoverGap)),
                                     ImGuiCond_Always, ImVec2(1.f, 1.f));
             ImGui::SetNextWindowSize(ImVec2(width, 0.f));
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ui::px(16.f), ui::px(14.f)));
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(8.f), ui::px(4.f)));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                                ImVec2(ui::px(ui::M.popoverPadX), ui::px(ui::M.popoverPadY)));
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::px(ui::M.s2), ui::px(ui::M.s1)));
             if (ImGui::BeginPopup(id, ImGuiWindowFlags_NoMove)) {
                 body();
                 ImGui::EndPopup();
             }
             ImGui::PopStyleVar(2);
         };
-        popover("##diag", ui::px(380.f), drawDiagnostics);
-        popover("##shortcuts", ui::px(340.f), drawShortcuts);
+        popover("##diag", ui::px(ui::M.diagnosticsW), drawDiagnostics);
+        popover("##shortcuts", ui::px(ui::M.shortcutsW), drawShortcuts);
 
         ImGui::PopStyleVar();
         ImGui::End();
@@ -2387,8 +2388,8 @@ int main(int argc, char** argv) {
 
     auto drawCanvasOverlays = [&](const Layout& L, bool exporting, ViewMode shown) {
         ImDrawList* bg = ImGui::GetBackgroundDrawList();
-        const float pad = ui::px(12.f);
-        const ImU32 pillBg = ui::col(ui::C.surface2, 0.92f);
+        const float pad = ui::px(ui::M.s3);
+        const ImU32 pillBg = ui::col(ui::C.pillBg);
         const ImU32 pillFg = ui::col(ui::C.textSecondary);
         ImVec2 r0, r1;
         imageRect(L, r0, r1);
@@ -2396,27 +2397,27 @@ int main(int argc, char** argv) {
         // On the white surround a light painting needs a faint edge.
         if (ui::Backdrop(backdrop) == ui::Backdrop::White)
             bg->AddRect(ImVec2(r0.x - 1.f, r0.y - 1.f), ImVec2(r1.x + 1.f, r1.y + 1.f),
-                        IM_COL32(0, 0, 0, 64));
+                        ui::col(ui::C.imageEdge));
         if (shown == ViewMode::Split) {
             // The wipe: a 1 px line with a grab handle, and corner labels.
             const float x = std::floor(L.i0.x + (L.i1.x - L.i0.x) * viewCtl.xf.wipe);
             const float cy = (r0.y + r1.y) * 0.5f;
             bg->AddRectFilled(ImVec2(x, r0.y), ImVec2(x + 1.f, r1.y),
-                              ui::col(ui::C.textPrimary, 0.75f));
-            const float r = ui::px(14.f);
+                              ui::col(ui::C.wipeLine));
+            const float r = ui::px(ui::M.handleR);
             bg->AddCircleFilled(ImVec2(x + 0.5f, cy), r, ui::col(ui::C.surface2), 32);
             bg->AddCircle(ImVec2(x + 0.5f, cy), r, ui::col(ui::C.borderStrong), 32, 1.f);
-            const float a = ui::px(4.f);
+            const float a = ui::px(ui::M.s1);
             const ImU32 ac = ui::col(ui::C.textPrimary);
             const ImVec2 la[3] = {ImVec2(x - a * 0.5f, cy - a), ImVec2(x - a * 1.5f, cy),
                                   ImVec2(x - a * 0.5f, cy + a)};
             const ImVec2 ra[3] = {ImVec2(x + a * 1.5f, cy - a), ImVec2(x + a * 2.5f, cy),
                                   ImVec2(x + a * 1.5f, cy + a)};
-            bg->AddPolyline(la, 3, ac, 0, ui::px(1.5f));
-            bg->AddPolyline(ra, 3, ac, 0, ui::px(1.5f));
+            bg->AddPolyline(la, 3, ac, 0, ui::px(ui::M.iconStroke));
+            bg->AddPolyline(ra, 3, ac, 0, ui::px(ui::M.iconStroke));
             ui::DrawPill(bg, ImVec2(r0.x + pad, r0.y + pad), ui::F.caption, "Source",
                          pillBg, pillFg);
-            const float pw = ui::TextWidth(ui::F.caption, "Painted") + ui::px(16.f);
+            const float pw = ui::TextWidth(ui::F.caption, "Painted") + ui::px(ui::M.s4);
             ui::DrawPill(bg, ImVec2(r1.x - pad - pw, r0.y + pad), ui::F.caption, "Painted",
                          pillBg, pillFg);
         } else if (shown == ViewMode::Source) {
@@ -2424,7 +2425,7 @@ int main(int argc, char** argv) {
                          pillBg, pillFg);
         }
         if (gui.previewRequested >= 0.0)
-            ui::DrawPill(bg, ImVec2(r0.x + pad, r1.y - pad - ui::px(22.f)), ui::F.caption,
+            ui::DrawPill(bg, ImVec2(r0.x + pad, r1.y - pad - ui::px(ui::M.compactH)), ui::F.caption,
                          "Seeking...", pillBg, pillFg);
         bg->PopClipRect();
 
@@ -2433,7 +2434,8 @@ int main(int argc, char** argv) {
                         const std::function<void()>& body) {
             ImGui::SetNextWindowPos(pos, ImGuiCond_Always, pivot);
             ImGui::SetNextWindowSize(ImVec2(width, 0.f));
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ui::px(20.f), ui::px(18.f)));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                                ImVec2(ui::px(ui::M.cardPadX), ui::px(ui::M.cardPadY)));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ui::px(ui::M.radiusLg));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.f);
             ImGui::PushStyleColor(ImGuiCol_WindowBg, ui::C.surface2);
@@ -2449,8 +2451,8 @@ int main(int argc, char** argv) {
         };
         const float cw = L.c1.x - L.c0.x;
         if (exporting) {
-            card("##exportcard", ImVec2(L.c0.x + ui::px(24.f), L.c1.y - ui::px(24.f)),
-                 ImVec2(0.f, 1.f), std::min(ui::px(380.f), cw - ui::px(48.f)), [&]() {
+            card("##exportcard", ImVec2(L.c0.x + ui::px(ui::M.s5), L.c1.y - ui::px(ui::M.s5)),
+                 ImVec2(0.f, 1.f), std::min(ui::px(ui::M.progressCardW), cw - ui::px(ui::M.s7)), [&]() {
                 const jobs::Progress& p = gui.progress;
                 const char* what = gui.kind == InputKind::Video ? "Exporting video"
                                  : gui.kind == InputKind::Images ? "Exporting images"
@@ -2458,14 +2460,14 @@ int main(int argc, char** argv) {
                 ui::Text(ui::F.section, ui::C.textPrimary, what);
                 if (!p.item.empty()) ui::Text(ui::F.caption, ui::C.textTertiary,
                                               fileName(p.item).c_str());
-                ui::Gap(6.f);
+                ui::Gap(ui::M.s2);
                 const ImVec2 a = ImGui::GetCursorScreenPos();
                 const float w = ImGui::GetContentRegionAvail().x;
                 const float frac = p.total > 0 ? float(double(p.done) / double(p.total)) : 0.f;
-                ui::DrawProgress(ImGui::GetWindowDrawList(), a, ImVec2(a.x + w, a.y + ui::px(4.f)),
+                ui::DrawProgress(ImGui::GetWindowDrawList(), a, ImVec2(a.x + w, a.y + ui::px(ui::M.s1)),
                                  frac, p.total <= 0);
-                ImGui::Dummy(ImVec2(w, ui::px(4.f)));
-                ui::Gap(4.f);
+                ImGui::Dummy(ImVec2(w, ui::px(ui::M.s1)));
+                ui::Gap(ui::M.s1);
                 char line[160];
                 if (p.total > 0)
                     snprintf(line, sizeof(line), "%lld / %lld  \xC2\xB7  %.1f ms/frame  \xC2\xB7  %u strokes",
@@ -2474,22 +2476,22 @@ int main(int argc, char** argv) {
                     snprintf(line, sizeof(line), "%lld frames  \xC2\xB7  %.1f ms/frame  \xC2\xB7  %u strokes",
                              (long long)p.done, p.msPerFrame, p.drawn);
                 ui::Text(ui::F.mono, ui::C.textSecondary, line);
-                ui::Gap(10.f);
+                ui::Gap(ui::M.s3);
                 if (ui::Button("Cancel export")) gui.cancel = true;
                 if (glfwGetTime() < escArmedUntil) {
-                    ImGui::SameLine(0.f, ui::px(12.f));
+                    ImGui::SameLine(0.f, ui::px(ui::M.s3));
                     ui::BarText(ui::F.caption, ui::C.textSecondary, "Press Esc again to cancel");
                 }
             });
         } else if (gui.kind == InputKind::None && pendingOpen.empty()) {
-            card("##democard", ImVec2((L.c0.x + L.c1.x) * 0.5f, L.c1.y - ui::px(32.f)),
-                 ImVec2(0.5f, 1.f), std::min(ui::px(440.f), cw - ui::px(48.f)), [&]() {
+            card("##democard", ImVec2((L.c0.x + L.c1.x) * 0.5f, L.c1.y - ui::px(ui::M.s6)),
+                 ImVec2(0.5f, 1.f), std::min(ui::px(ui::M.demoCardW), cw - ui::px(ui::M.s7)), [&]() {
                 ui::Text(ui::F.section, ui::C.textPrimary, "This is a demo image");
-                ui::Gap(4.f);
+                ui::Gap(ui::M.s1);
                 ui::TextWrapped(ui::F.body, ui::C.textSecondary,
                                 "Open or drop an image, a video or a folder of images to paint "
                                 "it. Every control works on the demo too.");
-                ui::Gap(12.f);
+                ui::Gap(ui::M.s3);
                 if (ui::Button("Open image...", ui::ButtonKind::Primary)) openImageDialog();
                 ImGui::SameLine();
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
@@ -2508,8 +2510,9 @@ int main(int argc, char** argv) {
         }
         const ImVec2 c = ImGui::GetMainViewport()->GetCenter();
         ImGui::SetNextWindowPos(c, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-        ImGui::SetNextWindowSize(ImVec2(ui::px(400.f), 0.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ui::px(24.f), ui::px(20.f)));
+        ImGui::SetNextWindowSize(ImVec2(ui::px(ui::M.dialogW), 0.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                            ImVec2(ui::px(ui::M.dialogPadX), ui::px(ui::M.dialogPadY)));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ui::px(ui::M.radiusLg));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.f);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ui::C.surface2);
@@ -2517,17 +2520,17 @@ int main(int argc, char** argv) {
                                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                    ImGuiWindowFlags_NoSavedSettings)) {
             ui::Text(ui::F.section, ui::C.textPrimary, confirm.title.c_str());
-            ui::Gap(8.f);
+            ui::Gap(ui::M.s2);
             ui::TextWrapped(ui::F.body, ui::C.textSecondary, confirm.body.c_str());
-            ui::Gap(20.f);
+            ui::Gap(ui::M.s5);
             const float okW = ui::ButtonWidth(confirm.ok.c_str(), ui::ButtonKind::Primary);
             const float cancelW = ui::ButtonWidth("Cancel");
-            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ui::px(24.f) - okW - cancelW - ui::px(8.f));
+            ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ui::px(ui::M.s5) - okW - cancelW - ui::px(ui::M.s2));
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
                                  (ui::px(ui::M.primaryH) - ui::px(ui::M.controlH)) * 0.5f);
             if (ui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
                 ImGui::CloseCurrentPopup();
-            ImGui::SameLine(0.f, ui::px(8.f));
+            ImGui::SameLine(0.f, ui::px(ui::M.s2));
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() -
                                  (ui::px(ui::M.primaryH) - ui::px(ui::M.controlH)) * 0.5f);
             if (ui::Button(confirm.ok.c_str(), ui::ButtonKind::Primary)) {

@@ -45,6 +45,9 @@ struct Palette {
     ImVec4 scrollGrab;
     ImVec4 scrollGrabHover;
     ImVec4 modalDim;
+    ImVec4 imageEdge;        // 1 px edge around the painting on the white surround
+    ImVec4 pillBg;           // canvas labels ("Source", "Painted")
+    ImVec4 wipeLine;         // split-view divider
 };
 
 // ── Metrics, in px at 100% ─────────────────────────────────────────────────
@@ -78,6 +81,28 @@ struct Metrics {
     float sectionBodyGap = 12.f;  // title to first control
     float groupGap = 16.f;        // between sub-groups in a section
     float canvasMargin = 24.f;    // surround around the painting at fit
+    // component sizes
+    float barPadX = 16.f;         // top bar and strip inset
+    float statusPadX = 12.f;      // status bar inset
+    float menuPadX = 10.f;        // text inset inside menus and popovers
+    float compactH = 22.f;        // status-bar segmented control, canvas pills
+    float dotR = 3.f;             // status and notice dots
+    float progressH = 2.f;        // export progress line under the top bar
+    float iconStroke = 1.5f;      // drawn icons (chevrons, handle arrows)
+    float handleR = 14.f;         // split-view grab handle
+    float popoverGap = 6.f;       // popover offset above the status bar
+    float popoverPadX = 16.f, popoverPadY = 14.f;
+    float cardPadX = 20.f, cardPadY = 18.f;
+    float dialogPadX = 24.f, dialogPadY = 20.f;
+    float progressCardW = 380.f;  // export progress card
+    float demoCardW = 440.f;      // demo-image card
+    float dialogW = 400.f;        // confirmation dialog
+    float diagnosticsW = 380.f;   // status-bar popovers
+    float shortcutsW = 340.f;
+    float keyColumnW = 150.f;     // label column inside those popovers
+    float pickerMaxH = 460.f;     // brush picker list
+    float playButtonW = 72.f;
+    float scrubMinW = 120.f;      // smallest useful timeline
 };
 
 // ── Type scale, in px at 100% ─────────────────────────────────────────────

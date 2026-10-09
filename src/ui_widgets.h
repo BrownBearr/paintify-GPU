@@ -66,6 +66,8 @@ bool Toggle(const char* label, bool* v, const char* help = nullptr);
 // Segmented control. width 0 sizes each segment to its text; height 0 = 28.
 bool Segmented(const char* id, const char* const* items, int count, int* index,
                float width = 0.f, float height = 0.f, const char* const* tooltips = nullptr);
+// Natural width of a Segmented control (width 0), for right-aligning it.
+float SegmentedWidth(const char* const* items, int count);
 
 // Select (combo): a field with the label on the left and the current value on
 // the right. Between BeginSelect/EndSelect add SelectItem rows.

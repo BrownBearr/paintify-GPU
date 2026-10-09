@@ -251,6 +251,9 @@ const Palette C = {
     /*scrollGrab*/       hex(0x333333),
     /*scrollGrabHover*/  hex(0x4A4A4A),
     /*modalDim*/         hex(0x000000, 0.55f),
+    /*imageEdge*/        hex(0x000000, 0.25f),
+    /*pillBg*/           hex(0x262626, 0.92f),
+    /*wipeLine*/         hex(0xEDEDED, 0.75f),
 };
 const Metrics M{};
 const TypeScale T{};

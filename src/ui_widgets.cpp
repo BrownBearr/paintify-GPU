@@ -525,6 +525,13 @@ bool Segmented(const char* id, const char* const* items, int count, int* index,
     return changed;
 }
 
+float SegmentedWidth(const char* const* items, int count) {
+    float w = 2.f * px(M.segmentInset);
+    for (int i = 0; i < count; ++i)
+        w += textSize(F.body, items[i], labelEnd(items[i])).x + 2.f * px(10.f);
+    return w;
+}
+
 namespace { int g_selectDepth = 0; }
 
 bool BeginSelect(const char* label, const char* preview, float width, float maxPopupH) {
