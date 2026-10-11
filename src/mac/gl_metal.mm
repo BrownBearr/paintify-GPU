@@ -213,12 +213,12 @@ template <class T>
 struct Table {
     std::unordered_map<GLuint, std::unique_ptr<T>> items;
     GLuint next = 1;
-    GLuint create() { const GLuint id = next++; items[id] = std::make_unique<T>(); return id; }
-    T* get(GLuint id) {
-        auto it = items.find(id);
+    GLuint create() { const GLuint name = next++; items[name] = std::make_unique<T>(); return name; }
+    T* get(GLuint name) {
+        auto it = items.find(name);
         return it == items.end() ? nullptr : it->second.get();
     }
-    void erase(GLuint id) { items.erase(id); }
+    void erase(GLuint name) { items.erase(name); }
 };
 
 enum class EncKind { None, Compute, Render, Blit };
@@ -674,14 +674,14 @@ id<MTLRenderCommandEncoder> renderEnc(GLuint fboId) {
     return g->render;
 }
 
-Texture* tex(GLuint id) {
-    Texture* t = g->textures.get(id);
+Texture* tex(GLuint name) {
+    Texture* t = g->textures.get(name);
     if (!t) warnOnce("operation on an unknown texture name");
     return t;
 }
 
-Buffer* buf(GLuint id) {
-    Buffer* b = g->buffers.get(id);
+Buffer* buf(GLuint name) {
+    Buffer* b = g->buffers.get(name);
     if (!b) warnOnce("operation on an unknown buffer name");
     return b;
 }
@@ -1029,8 +1029,8 @@ void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum) {
         }
     }
 }
-void glNamedBufferSubData(GLuint id, GLintptr offset, GLsizeiptr size, const void* data) {
-    Buffer* b = buf(id);
+void glNamedBufferSubData(GLuint name, GLintptr offset, GLsizeiptr size, const void* data) {
+    Buffer* b = buf(name);
     if (!b || !data) return;
     if (b->uniform) {
         if (size_t(offset + size) <= b->shadow.size())
@@ -1043,14 +1043,14 @@ void glNamedBufferSubData(GLuint id, GLintptr offset, GLsizeiptr size, const voi
                 destinationOffset:NSUInteger(offset) size:size_t(size)];
     }
 }
-void glGetNamedBufferSubData(GLuint id, GLintptr offset, GLsizeiptr size, void* data) {
-    Buffer* b = buf(id);
+void glGetNamedBufferSubData(GLuint name, GLintptr offset, GLsizeiptr size, void* data) {
+    Buffer* b = buf(name);
     if (!b || size <= 0) return;
     readBuffer(*b, size_t(offset), size_t(size), data);
 }
-void glClearNamedBufferSubData(GLuint id, GLenum, GLintptr offset, GLsizeiptr size, GLenum,
+void glClearNamedBufferSubData(GLuint name, GLenum, GLintptr offset, GLsizeiptr size, GLenum,
                                GLenum, const void* data) {
-    Buffer* b = buf(id);
+    Buffer* b = buf(name);
     if (!b || size <= 0) return;
     uint32_t pattern = 0;
     if (data) std::memcpy(&pattern, data, 4);
@@ -1064,11 +1064,11 @@ void glClearNamedBufferSubData(GLuint id, GLenum, GLintptr offset, GLsizeiptr si
         return;
     }
     std::vector<uint32_t> fill(size_t(size + 3) / 4, pattern);
-    glNamedBufferSubData(id, offset, size, fill.data());
+    glNamedBufferSubData(name, offset, size, fill.data());
 }
-void glClearNamedBufferData(GLuint id, GLenum ifmt, GLenum format, GLenum type, const void* data) {
-    Buffer* b = buf(id);
-    if (b) glClearNamedBufferSubData(id, ifmt, 0, GLsizeiptr(b->size), format, type, data);
+void glClearNamedBufferData(GLuint name, GLenum ifmt, GLenum format, GLenum type, const void* data) {
+    Buffer* b = buf(name);
+    if (b) glClearNamedBufferSubData(name, ifmt, 0, GLsizeiptr(b->size), format, type, data);
 }
 void glCopyNamedBufferSubData(GLuint src, GLuint dst, GLintptr so, GLintptr dO, GLsizeiptr size) {
     Buffer* a = buf(src);
@@ -1125,9 +1125,9 @@ void glBindVertexArray(GLuint) {}
 
 // ── shaders and programs ────────────────────────────────────────────────────
 GLuint glCreateShader(GLenum type) {
-    const GLuint id = g->shaders.create();
-    g->shaders.get(id)->type = type;
-    return id;
+    const GLuint name = g->shaders.create();
+    g->shaders.get(name)->type = type;
+    return name;
 }
 void glShaderSource(GLuint s, GLsizei count, const GLchar* const* strings, const GLint* lengths) {
     Shader* sh = g->shaders.get(s);
@@ -1197,7 +1197,9 @@ void glLinkProgram(GLuint pid) {
 
     auto addStage = [&](int index, const mslx::Result& r) {
         p->stage[index].resources = r.resources;
-        p->stage[index].block.assign(r.uniformBlockSize, 0);
+        // Rounded to 16: MSL's float3 is 16-byte aligned, so a block ending
+        // in a vec3 is 4 bytes larger in Metal than its declared size.
+        p->stage[index].block.assign((r.uniformBlockSize + 15u) & ~15u, 0);
         for (const mslx::UniformMember& m : r.uniforms) {
             auto it = p->locations.find(m.name);
             GLint loc;
@@ -1327,14 +1329,14 @@ void glDrawArraysIndirect(GLenum mode, const void* indirect) {
 // GPU end of its last. The extra submissions cost a few microseconds each.
 void glGenQueries(GLsizei n, GLuint* out) { for (GLsizei i = 0; i < n; ++i) out[i] = g->queries.create(); }
 void glDeleteQueries(GLsizei n, const GLuint* ids) { for (GLsizei i = 0; i < n; ++i) g->queries.erase(ids[i]); }
-void glBeginQuery(GLenum, GLuint id) {
-    Query* q = g->queries.get(id);
+void glBeginQuery(GLenum, GLuint name) {
+    Query* q = g->queries.get(name);
     if (!q) return;
     submit(false);
     q->elapsed = true;
     q->startCb = cmd();
     q->endCb = nil;
-    g->activeElapsed = id;
+    g->activeElapsed = name;
 }
 void glEndQuery(GLenum) {
     Query* q = g->queries.get(g->activeElapsed);
@@ -1343,8 +1345,8 @@ void glEndQuery(GLenum) {
     q->endCb = cmd();
     submit(false);
 }
-void glQueryCounter(GLuint id, GLenum) {
-    Query* q = g->queries.get(id);
+void glQueryCounter(GLuint name, GLenum) {
+    Query* q = g->queries.get(name);
     if (!q) return;
     q->elapsed = false;
     q->startCb = nil;
@@ -1368,14 +1370,14 @@ static bool queryDone(const Query& q) {
     };
     return done(q.startCb) && done(q.endCb);
 }
-void glGetQueryObjectiv(GLuint id, GLenum pname, GLint* params) {
-    Query* q = g->queries.get(id);
+void glGetQueryObjectiv(GLuint name, GLenum pname, GLint* params) {
+    Query* q = g->queries.get(name);
     if (pname == GL_QUERY_RESULT_AVAILABLE) *params = (!q || queryDone(*q)) ? GL_TRUE : GL_FALSE;
-    else { GLuint64 v = 0; glGetQueryObjectui64v(id, pname, &v); *params = GLint(v); }
+    else { GLuint64 v = 0; glGetQueryObjectui64v(name, pname, &v); *params = GLint(v); }
 }
-void glGetQueryObjectui64v(GLuint id, GLenum, GLuint64* params) {
+void glGetQueryObjectui64v(GLuint name, GLenum, GLuint64* params) {
     *params = 0;
-    Query* q = g->queries.get(id);
+    Query* q = g->queries.get(name);
     if (!q) return;
     if (!q->endCb) { *params = GLuint64(q->hostTime * 1e9); return; }
     if (q->endCb.status < MTLCommandBufferStatusCommitted) submit(false);

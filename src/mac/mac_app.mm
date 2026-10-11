@@ -1,7 +1,9 @@
 #import <Cocoa/Cocoa.h>
 #import <objc/runtime.h>
 
+#ifndef GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_NONE
+#endif
 #define GLFW_EXPOSE_NATIVE_COCOA
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
