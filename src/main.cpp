@@ -3,13 +3,15 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
-#include <glad/glad.h>
+#include "gfx.h"   // first: the GL declarations (glad, or the Metal layer on macOS)
 #include <GLFW/glfw3.h>
 
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>   // ClosePopupsExceptModals: Esc closes menus
+
+#ifdef __APPLE__
+#include "mac/mac_app.h"
+#endif
 
 #include "pipeline.h"
 #include "params.h"
@@ -392,6 +394,12 @@ bool writePng(const std::string& path, const std::vector<unsigned char>& px, int
 
 // ── GUI state ──────────────────────────────────────────────────────────────
 
+#ifdef __APPLE__
+constexpr const char* kRevealLabel = "Show in Finder";
+#else
+constexpr const char* kRevealLabel = "Show in folder";
+#endif
+
 enum class InputKind { None, Image, Video, Images };
 
 // Everything the window needs to know about what is loaded and where it is
@@ -562,6 +570,16 @@ struct View {
 void updateView(View& v, int fbH, int vx, int vy, int vw, int vh,
                 int imgW, int imgH, ViewMode mode) {
     ImGuiIO& io = ImGui::GetIO();
+#ifdef __APPLE__
+    // Trackpads: pinch zooms and a two-finger scroll pans, as in Preview. A
+    // mouse wheel still zooms. Read every frame so a gesture over the panel
+    // is dropped rather than replayed later over the canvas.
+    const float pinch = macapp::takeMagnification();
+    const bool trackpad = macapp::scrollIsTrackpad();
+#else
+    const float pinch = 0.f;
+    const bool trackpad = false;
+#endif
     if (imgW <= 0 || imgH <= 0 || vw <= 0 || vh <= 0) return;
 
     // io.MousePos is in logical window units with a top-left origin; the blit
@@ -611,12 +629,19 @@ void updateView(View& v, int fbH, int vx, int vy, int vw, int vh,
         v.xf.focusY = fy - io.MouseDelta.y * sy / scale;
     }
 
-    if (over && io.MouseWheel != 0.f) {
+    if (over && trackpad && (io.MouseWheel != 0.f || io.MouseWheelH != 0.f)) {
+        // Content follows the fingers. GLFW reports precise deltas in tenths
+        // of a point, hence the 10.
+        v.xf.focusX = fx - io.MouseWheelH * 10.f * sx / scale;
+        v.xf.focusY = fy - io.MouseWheel * 10.f * sy / scale;
+    }
+    const float wheel = trackpad ? 0.f : io.MouseWheel;
+    if (over && (wheel != 0.f || pinch != 0.f)) {
         // Pin the image point under the cursor, so the wheel magnifies what is
         // being looked at rather than the middle of the window.
         const float ix = fx + (mx - cx) / scale;
         const float iy = fy - (my - cy) / scale;
-        const float z = std::clamp(v.xf.zoom * std::pow(1.15f, io.MouseWheel),
+        const float z = std::clamp(v.xf.zoom * std::pow(1.15f, wheel) * (1.f + pinch),
                                    0.25f, 64.f);
         const float s2 = fit * z;
         v.xf.zoom = z;
@@ -711,26 +736,26 @@ int main(int argc, char** argv) {
             printf("%-14s %-24s %-24s %s\n", s.key, s.name, s.era, s.years);
         return 0;
     }
+#ifdef __APPLE__
+    macapp::preInit();
+#endif
     if (!glfwInit()) { fprintf(stderr, "glfwInit failed\n"); return 1; }
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-    if (opt.headless) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
-    GLFWwindow* win = glfwCreateWindow(1600, 900, "Brushkit", nullptr, nullptr);
-    if (!win) {
-        fprintf(stderr, "need an OpenGL 4.6 core context\n");
+    // GL needs a window even to paint offscreen (hidden for --headless);
+    // Metal does not, so command-line jobs on macOS open none.
+    const bool interactive = !opt.headless && opt.videoIn.empty() && opt.batchDir.empty() &&
+                             opt.framesDir.empty();
+    GLFWwindow* win = nullptr;
+    if (interactive || gfx::needsWindowForOffscreen()) {
+        gfx::windowHints(/*visible=*/!opt.headless);
+        win = glfwCreateWindow(1600, 900, "Brushkit", nullptr, nullptr);
+        if (!win && interactive) fprintf(stderr, "could not create the window\n");
+    }
+    if ((interactive && !win) || !gfx::initContext(win)) {
         glfwTerminate();
         return 1;
     }
-    glfwMakeContextCurrent(win);
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        fprintf(stderr, "glad failed\n");
-        return 1;
-    }
-    glfwSwapInterval(0);   // vsync off: the overlay is meant to show real cost
-    printf("GL %s | %s\n", glGetString(GL_VERSION), glGetString(GL_RENDERER));
+    printf("%s\n", gfx::describe());
 
     Pipeline pipe;
     if (!pipe.init()) return 1;
@@ -990,19 +1015,28 @@ int main(int argc, char** argv) {
     // Content scale (1.25 at 120 dpi...). Fonts are rasterised at this size
     // rather than scaled afterwards, which would blur them.
     float uiScale = 1.f;
+    // macOS lays the interface out in points, so the content scale (2 on a
+    // Retina display) only sets how finely the glyphs are rasterised.
+    float fontDensity = 1.f;
     {
         float csx = 1.f, csy = 1.f;
         glfwGetWindowContentScale(win, &csx, &csy);
+#ifdef __APPLE__
+        fontDensity = std::clamp(csx, 1.f, 4.f);
+#else
         uiScale = std::clamp(csx, 1.f, 4.f);
+#endif
         // For checking layouts at other scales on a 96 dpi screen.
         if (const char* e = std::getenv("BRUSHKIT_UI_SCALE")) {
             const float f = std::strtof(e, nullptr);
             if (f >= 0.75f && f <= 4.f) uiScale = f;
         }
     }
-    ui::applyTheme(uiScale);
-    ImGui_ImplGlfw_InitForOpenGL(win, true);
-    ImGui_ImplOpenGL3_Init("#version 460");
+    ui::applyTheme(uiScale, fontDensity);
+    gfx::imguiInit(win);
+#ifdef __APPLE__
+    macapp::setupWindow(win, ui::C.bgApp.x, ui::C.bgApp.y, ui::C.bgApp.z);
+#endif
     // Below this the top bar's two clusters would collide.
     glfwSetWindowSizeLimits(win, int(1024 * uiScale), int(600 * uiScale), GLFW_DONT_CARE,
                             GLFW_DONT_CARE);
@@ -1141,6 +1175,7 @@ int main(int argc, char** argv) {
     bool lastExportFromPanel = false;       // false for an S-key snapshot
     double exportT0 = 0.0, escArmedUntil = 0.0;
     bool snapshotRequested = false;
+    bool showShortcuts = false;             // Help > Keyboard Shortcuts, next frame
     std::string windowTitle;
 
     // A confirmation for the two actions that silently threw work away before.
@@ -1202,9 +1237,7 @@ int main(int argc, char** argv) {
         gui.status = gui.statusIsError ? perr : ("Saved look " + fileName(p));
         if (!gui.statusIsError) { lookName = fileName(p); lookDirty = false; }
     };
-    auto loadLook = [&]() {
-        const std::string p = filedialog::openFile("Open look", kParamFilter);
-        if (p.empty()) return;
+    auto loadLookFrom = [&](const std::string& p) {
         std::string perr, key;
         bool withStyle = false;
         TuningParams loadedParams = params;
@@ -1235,6 +1268,10 @@ int main(int argc, char** argv) {
         gui.statusIsError = false;
         lookName = fileName(p);
         lookDirty = false;
+    };
+    auto loadLook = [&]() {
+        const std::string p = filedialog::openFile("Open look", kParamFilter);
+        if (!p.empty()) loadLookFrom(p);
     };
     auto cycleView = [&]() {
         // Painted -> Split -> Source, the order of the segmented control.
@@ -1914,12 +1951,12 @@ int main(int argc, char** argv) {
                              "Open an image or video first. The demo can't be exported.");
         if (ui::Button(label, ui::ButtonKind::Primary, -1.f)) gui.startExport = true;
         ui::EndDisabledWhy();
-        ui::Tooltip(nullptr, "Ctrl+E opens this panel.");
+        ui::Tooltip(nullptr, (std::string(ui::keyLabel("Ctrl+E")) + " opens this panel.").c_str());
 
         if (!lastExportTarget.empty() && lastExportOk && lastExportFromPanel &&
             gui.kind != InputKind::None) {
             ui::Gap(ui::M.s3);
-            if (ui::Button("Show in folder")) filedialog::reveal(lastExportTarget);
+            if (ui::Button(kRevealLabel)) filedialog::reveal(lastExportTarget);
         }
     };
 
@@ -1943,7 +1980,7 @@ int main(int argc, char** argv) {
             const ImVec2 p = ImGui::GetCursorScreenPos();
             ImGui::Dummy(ImVec2(side, slot));
             const ImVec2 a(p.x, std::floor(p.y + (slot - side) * 0.5f));
-            ImGui::GetWindowDrawList()->AddImage(ImTextureID(intptr_t(logoTex)), a,
+            ImGui::GetWindowDrawList()->AddImage(gfx::textureId(logoTex), a,
                                                  ImVec2(a.x + side, a.y + side));
             ImGui::SameLine(0.f, ui::px(ui::M.s2));
         }
@@ -1952,7 +1989,7 @@ int main(int argc, char** argv) {
 
         ImGui::BeginDisabled(exporting);
         if (ui::BeginMenuButton("Open", ui::ButtonKind::Secondary)) {
-            if (ui::MenuItem("Image...", "Ctrl+O")) openImageDialog();
+            if (ui::MenuItem("Image...", ui::keyLabel("Ctrl+O"))) openImageDialog();
             if (ui::MenuItem("Video...")) openVideoDialog();
             if (ui::MenuItem("Images as a batch...")) openImagesDialog();
             if (ui::MenuItem("Folder as a batch...")) openFolderDialog();
@@ -1991,8 +2028,8 @@ int main(int argc, char** argv) {
         if (lookDirty) look += "  \xE2\x80\xA2";
         ImGui::BeginDisabled(exporting);
         if (ui::BeginMenuButton("Look", ui::ButtonKind::Ghost, look.c_str())) {
-            if (ui::MenuItem("Save look...", "Ctrl+S")) saveLook();
-            if (ui::MenuItem("Open look...", "Ctrl+Shift+O")) loadLook();
+            if (ui::MenuItem("Save look...", ui::keyLabel("Ctrl+S"))) saveLook();
+            if (ui::MenuItem("Open look...", ui::keyLabel("Ctrl+Shift+O"))) loadLook();
             ui::MenuSeparator();
             ImGui::Indent(ui::px(ui::M.menuPadX));
             ui::Text(ui::F.caption, ui::C.textTertiary, "A look stores every setting (.sbr)");
@@ -2023,7 +2060,7 @@ int main(int argc, char** argv) {
             const float y = ImGui::GetCursorPosY();
             ImGui::SetCursorPosY(y - (ui::px(ui::M.primaryH) - ui::px(ui::M.controlH)) * 0.5f);
             if (ui::Button("Export...", ui::ButtonKind::Primary)) inspectorTab = 1;
-            ui::Tooltip("Choose where to save, then export.", "Ctrl+E");
+            ui::Tooltip("Choose where to save, then export.", ui::keyLabel("Ctrl+E"));
         }
         ImGui::PopStyleVar();
 
@@ -2227,7 +2264,7 @@ int main(int argc, char** argv) {
         ui::TextWrapped(ui::F.caption, ui::C.textTertiary, ("Fonts: " + ui::F.source).c_str());
         ui::Gap(ui::M.s2);
         if (ui::Button("Reload shaders")) reloadShaders();
-        ui::Tooltip(nullptr, "F5");
+        ui::Tooltip(nullptr, ui::keyLabel("F5"));
     };
 
     auto drawShortcuts = [&]() {
@@ -2238,12 +2275,17 @@ int main(int argc, char** argv) {
             {"Ctrl+Shift+O", "Open look"},     {"Ctrl+E", "Export panel"},
             {"V / Tab", "Cycle view"},         {"Hold B", "Show the source"},
             {"F / double-click", "Fit"},       {"1", "Actual pixels (1:1)"},
+#ifdef __APPLE__
+            {"Pinch / wheel", "Zoom at cursor"}, {"Scroll / drag", "Pan, or move the split"},
+            {"\xE2\x8C\x98" "1 2 3", "Painted, split, source"},
+#else
             {"Wheel", "Zoom at cursor"},       {"Drag", "Pan, or move the split"},
+#endif
             {"Space", "Play / pause video"},   {"S", "Save a PNG snapshot (--out)"},
             {"F5", "Reload shaders"},          {"Ctrl+Q", "Quit"},
         };
         for (const auto& r : rows) {
-            ui::Text(ui::F.mono, ui::C.textPrimary, r[0]);
+            ui::Text(ui::F.mono, ui::C.textPrimary, ui::keyLabel(r[0]));
             ImGui::SameLine(ui::px(ui::M.keyColumnW));
             ui::Text(ui::F.body, ui::C.textSecondary, r[1]);
         }
@@ -2334,7 +2376,7 @@ int main(int argc, char** argv) {
             ui::Tooltip(gui.status.c_str());
             if (success && lastExportOk && !lastExportTarget.empty()) {
                 ImGui::SameLine(0.f, ui::px(ui::M.s2));
-                if (ui::BarLink(ui::F.caption, ui::C.textSecondary, "##reveal", "Show in folder"))
+                if (ui::BarLink(ui::F.caption, ui::C.textSecondary, "##reveal", kRevealLabel))
                     filedialog::reveal(lastExportTarget);
             }
             ImGui::SameLine(0.f, ui::px(ui::M.s1));
@@ -2342,8 +2384,13 @@ int main(int argc, char** argv) {
                 gui.status.clear();
             ui::Tooltip("Dismiss");
         } else {
+#ifdef __APPLE__
+            ui::BarText(ui::F.caption, ui::C.textTertiary,
+                        "Pinch to zoom  \xC2\xB7  scroll or drag to pan  \xC2\xB7  hold B for the source");
+#else
             ui::BarText(ui::F.caption, ui::C.textTertiary,
                         "Wheel to zoom  \xC2\xB7  drag to pan  \xC2\xB7  hold B for the source");
+#endif
         }
         ImGui::PopClipRect();
 
@@ -2374,8 +2421,9 @@ int main(int argc, char** argv) {
                       kBackdropTips);
         ImGui::SameLine(0.f, ui::px(ui::M.s3));
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() - compactInset);
-        if (ui::BarLink(ui::F.body, ui::C.textSecondary, "##help", "?"))
+        if (ui::BarLink(ui::F.body, ui::C.textSecondary, "##help", "?") || showShortcuts)
             ImGui::OpenPopup("##shortcuts");
+        showShortcuts = false;
         ui::Tooltip("Keyboard shortcuts");
 
         // Popovers open upwards from the status bar.
@@ -2609,18 +2657,34 @@ int main(int argc, char** argv) {
     };
 
     uint64_t shownFrames = 0;
+    bool painted = true;   // last frame repainted the canvas
     while (!glfwWindowShouldClose(win)) {
         ++shownFrames;
+#ifdef __APPLE__
+        // At rest -- a still nobody is touching -- wait for input instead of
+        // redrawing at the display rate. The short timeout keeps hover delays
+        // and tooltips ticking. Battery life is a Mac feature too.
+        const bool busy = playing || painted || !pendingOpen.empty() || gui.startExport ||
+                          gui.previewRequested >= 0.0 || pendingScale > 0.f;
+        if (busy) glfwPollEvents();
+        else glfwWaitEventsTimeout(0.1);
+        for (std::string& p : macapp::takeOpenedPaths()) droppedPaths.push_back(std::move(p));
+#else
         glfwPollEvents();
+#endif
 
         if (pendingScale > 0.f) {
             const float s = std::clamp(pendingScale, 1.f, 4.f);
             pendingScale = 0.f;
-            if (std::fabs(s - uiScale) > 0.01f) {
-                uiScale = s;
-                ui::applyTheme(uiScale);
-                ImGui_ImplOpenGL3_DestroyFontsTexture();
-                ImGui_ImplOpenGL3_CreateFontsTexture();
+#ifdef __APPLE__
+            float& scaled = fontDensity;   // a Retina <-> standard display move
+#else
+            float& scaled = uiScale;
+#endif
+            if (std::fabs(s - scaled) > 0.01f) {
+                scaled = s;
+                ui::applyTheme(uiScale, fontDensity);
+                gfx::rebuildFontTexture();
             }
         }
 
@@ -2663,7 +2727,15 @@ int main(int argc, char** argv) {
         // and picks open one frame late, so "Opening..." is on screen while
         // the (blocking) decode runs.
         if (!droppedPaths.empty()) {
-            queueOpen(droppedPaths);
+            // A dropped (or Finder-opened) .sbr is a look, not a source.
+            std::vector<std::string> sources;
+            for (const std::string& p : droppedPaths) {
+                std::string ext = fs::path(p).extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".sbr" && !gui.exporting) loadLookFrom(p);
+                else sources.push_back(p);
+            }
+            queueOpen(sources);
             droppedPaths.clear();
         }
         if (!pendingOpen.empty() && ++pendingAge > 2) {
@@ -2677,20 +2749,57 @@ int main(int argc, char** argv) {
             successStatus.clear();
             acceptPaths(paths, pipe, gui, sourceNote);
             fitView();
+#ifdef __APPLE__
+            if (!gui.statusIsError && paths.size() == 1) macapp::noteRecent(paths.front());
+#endif
         }
 
         const double t0 = glfwGetTime();
         params.tensorSigma = tensorOn ? std::max(0.1f, params.tensorSigma) : 0.f;
         // Paint only when an input actually changed: a still that nobody is
         // touching is painted once, not 60 times a second.
-        pipe.renderIfChanged(params, cfg, playing && temporal);
+        painted = pipe.renderIfChanged(params, cfg, playing && temporal);
         params.frame += 1.f;
 
         const Layout L = computeLayout();
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
+        gfx::beginFrame(win);
+        gfx::imguiNewFrame();
         ImGui::NewFrame();
+
+#ifdef __APPLE__
+        // ── menu bar commands (the Mac's Cmd+key shortcuts arrive here) ──
+        for (macapp::Command c = macapp::nextCommand(); c != macapp::Command::None;
+             c = macapp::nextCommand()) {
+            using C = macapp::Command;
+            const float fitNow = (pipe.width() > 0 && pipe.height() > 0)
+                ? std::min(float(L.fbW) / float(pipe.width()), float(L.fbH) / float(pipe.height()))
+                : 1.f;
+            switch (c) {
+                case C::OpenImage: openImageDialog(); break;
+                case C::OpenVideo: openVideoDialog(); break;
+                case C::OpenImages: openImagesDialog(); break;
+                case C::OpenFolder: openFolderDialog(); break;
+                case C::SaveLook: saveLook(); break;
+                case C::OpenLook: loadLook(); break;
+                case C::Export: inspectorTab = 1; break;
+                case C::Snapshot: snapshotRequested = true; break;
+                case C::ViewPainted: view = ViewMode::Painted; break;
+                case C::ViewSplit: view = ViewMode::Split; break;
+                case C::ViewSource: view = ViewMode::Source; break;
+                case C::ZoomFit: fitView(); break;
+                case C::ZoomActual: if (fitNow > 0.f) viewCtl.xf.zoom = 1.f / fitNow; break;
+                case C::ZoomIn: viewCtl.xf.zoom = std::min(viewCtl.xf.zoom * 1.25f, 64.f); break;
+                case C::ZoomOut: viewCtl.xf.zoom = std::max(viewCtl.xf.zoom / 1.25f, 0.25f); break;
+                case C::PlayPause:
+                    if (gui.kind == InputKind::Video) { if (playing) stopPlay(); else startPlay(); }
+                    break;
+                case C::ReloadShaders: reloadShaders(); break;
+                case C::ShowShortcuts: showShortcuts = true; break;
+                default: break;
+            }
+        }
+#endif
 
         // ── keys: never while a text field has focus ─────────────────────
         ImGuiIO& io = ImGui::GetIO();
@@ -2703,13 +2812,16 @@ int main(int argc, char** argv) {
         const bool popupOpen =
             ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
         if (!io.WantTextInput && !popupOpen) {
-            const bool ctrl = io.KeyCtrl, shift = io.KeyShift;
+            const bool ctrl = io.KeyCtrl;
+#ifndef __APPLE__   // on macOS the menu bar owns Cmd+key (see above)
+            const bool shift = io.KeyShift;
             if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Q, false))
                 glfwSetWindowShouldClose(win, GLFW_TRUE);
             if (ctrl && !shift && ImGui::IsKeyPressed(ImGuiKey_O, false)) openImageDialog();
             if (ctrl && shift && ImGui::IsKeyPressed(ImGuiKey_O, false)) loadLook();
             if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S, false)) saveLook();
             if (ctrl && ImGui::IsKeyPressed(ImGuiKey_E, false)) inspectorTab = 1;
+#endif
             if (!ctrl) {
                 if (ImGui::IsKeyPressed(ImGuiKey_Tab, false) ||
                     ImGui::IsKeyPressed(ImGuiKey_V, false))
@@ -2746,7 +2858,7 @@ int main(int argc, char** argv) {
         ImGui::Render();
         clearFrame(L);
         pipe.blitToScreen(L.fbX, L.fbY, L.fbW, L.fbH, L.fbTotalW, L.fbTotalH, shown, viewCtl.xf);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        gfx::imguiRender();
 
         if (snapshotRequested) {
             snapshotRequested = false;
@@ -2764,7 +2876,7 @@ int main(int argc, char** argv) {
             successStatus = ok ? gui.status : std::string();
         }
 
-        glfwSwapBuffers(win);
+        gfx::present(win);
         cpuMs = (glfwGetTime() - t0) * 1000.0;
 
         // Window title follows the source.
@@ -2775,6 +2887,25 @@ int main(int argc, char** argv) {
                 glfwSetWindowTitle(win, windowTitle.c_str());
             }
         }
+#ifdef __APPLE__
+        // The title bar's proxy icon is the open file (drag it, Cmd-click it);
+        // the close button carries the unsaved-look dot.
+        {
+            std::string doc;
+            if (gui.kind == InputKind::Image || gui.kind == InputKind::Video) {
+                std::error_code ec;
+                doc = fs::absolute(gui.inputPath, ec).string();
+            }
+            macapp::setRepresentedFile(win, doc);
+            macapp::setDocumentEdited(win, lookDirty);
+            macapp::MenuState ms;
+            ms.busy = gui.exporting;
+            ms.video = gui.kind == InputKind::Video;
+            ms.playing = playing;
+            ms.view = view == ViewMode::Painted ? 0 : view == ViewMode::Split ? 1 : 2;
+            macapp::setMenuState(ms);
+        }
+#endif
 
         // Re-seek the video preview once the scrub is released (one frame
         // late, so "Seeking..." is on screen during the blocking decode).
@@ -2808,12 +2939,12 @@ int main(int argc, char** argv) {
                 if (glfwWindowShouldClose(win)) return false;
 
                 const Layout PL = computeLayout();
+                gfx::beginFrame(win);
                 clearFrame(PL);
                 pipe.blitToScreen(PL.fbX, PL.fbY, PL.fbW, PL.fbH, PL.fbTotalW, PL.fbTotalH,
                                   view, viewCtl.xf);
 
-                ImGui_ImplOpenGL3_NewFrame();
-                ImGui_ImplGlfw_NewFrame();
+                gfx::imguiNewFrame();
                 ImGui::NewFrame();
                 // Esc twice cancels; once only arms it, so a stray key press
                 // does not throw away a long render.
@@ -2825,8 +2956,8 @@ int main(int argc, char** argv) {
                 lookChanged = false;
                 drawUi(PL, true, view);
                 ImGui::Render();
-                ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-                glfwSwapBuffers(win);
+                gfx::imguiRender();
+                gfx::present(win);
                 return !gui.cancel;
             };
 
@@ -2904,8 +3035,7 @@ int main(int argc, char** argv) {
            (unsigned long long)shownFrames, (unsigned long long)pipe.renderCount());
     fflush(stdout);
     if (logoTex) glDeleteTextures(1, &logoTex);
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
+    gfx::imguiShutdown();
     ImGui::DestroyContext();
     pipe.shutdown();
     glfwDestroyWindow(win);

@@ -1,0 +1,118 @@
+name: macOS
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/../vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/../vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ matrix.runner }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ matrix.runner }}-
+
+      - name: Set up vcpkg
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone https://github.com/microsoft/vcpkg "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+          brew list ninja >/dev/null 2>&1 || brew install ninja
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Bundle check
+        run: |
+          APP=build/Brushkit.app
+          ls -R "$APP/Contents" | head -50
+          plutil -lint "$APP/Contents/Info.plist"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          otool -L "$APP/Contents/MacOS/Brushkit"
+
+      - name: Paint every brush style (headless, Metal)
+        run: |
+          BK=build/Brushkit.app/Contents/MacOS/Brushkit
+          mkdir -p out
+          "$BK" --list-styles | tee out/styles.txt
+          fail=0
+          for s in none $("$BK" --list-styles | awk '{print $1}'); do
+            echo "::group::$s"
+            if ! "$BK" --headless --in assets/sample.jpg --style "$s" --out "out/$s.png" > "out/$s.log" 2>&1; then
+              echo "::error::style $s failed"; fail=1
+            fi
+            cat "out/$s.log"
+            if grep -q '\[metal\]' "out/$s.log"; then echo "::error::style $s logged Metal errors"; fail=1; fi
+            echo "::endgroup::"
+          done
+          # The heavier paths: relaxation, ETF, structure tensor, impasto.
+          "$BK" --headless --in assets/sample.jpg --style none --relax 2 --etf 2 --tensor-sigma 3 \
+                --impasto 1 --impasto-light 1 --relax-log --etf-log --out out/relax-etf.png 2>&1 | tee out/relax-etf.log
+          grep -q '\[metal\]' out/relax-etf.log && fail=1
+          exit $fail
+
+      - name: Check the paintings are not blank
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow numpy || python3 -m pip install --quiet pillow numpy
+          python3 - <<'PY'
+          import glob, sys
+          import numpy as np
+          from PIL import Image
+          src = np.asarray(Image.open("assets/sample.jpg").convert("RGB"), np.float32)
+          bad = 0
+          for p in sorted(glob.glob("out/*.png")):
+              a = np.asarray(Image.open(p).convert("RGB"), np.float32)
+              same = a.shape == src.shape
+              diff = float(np.abs(a - src).mean()) if same else -1
+              print(f"{p:32s} {a.shape[1]}x{a.shape[0]} mean {a.mean():6.1f} std {a.std():5.1f} |painted-source| {diff:5.1f}")
+              if a.std() < 5 or not same:
+                  print("  ^ looks blank or wrong size"); bad += 1
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Launch the app and take a screenshot
+        continue-on-error: true
+        run: |
+          open build/Brushkit.app --args --in "$PWD/assets/sample.jpg" --style cezanne
+          sleep 12
+          screencapture -x out/screenshot-window.png || true
+          osascript -e 'tell application "System Events" to keystroke "2" using command down' || true
+          sleep 2
+          screencapture -x out/screenshot-split.png || true
+          osascript -e 'tell application "Brushkit" to quit' || pkill -x Brushkit || true
+
+      - name: Package DMG
+        run: cpack --config build/CPackConfig.cmake -B dist
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brushkit-macos-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            out/

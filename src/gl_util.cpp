@@ -7,6 +7,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 namespace glu {
 
@@ -25,26 +28,63 @@ static std::string readFile(const std::string& path, bool* ok) {
 }
 
 static int64_t fileMTime(const std::string& path) {
+#ifdef _WIN32
     struct _stat64 st;
     if (_stat64(path.c_str(), &st) != 0) return 0;
+#else
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0) return 0;
+#endif
     return static_cast<int64_t>(st.st_mtime);
+}
+
+static std::filesystem::path exeDirectory() {
+#ifdef _WIN32
+    char exe[MAX_PATH] = {};
+    if (GetModuleFileNameA(nullptr, exe, MAX_PATH)) return std::filesystem::path(exe).parent_path();
+#elif defined(__APPLE__)
+    char exe[4096] = {};
+    uint32_t size = sizeof(exe);
+    if (_NSGetExecutablePath(exe, &size) == 0) {
+        std::error_code ec;
+        const auto real = std::filesystem::canonical(exe, ec);
+        return (ec ? std::filesystem::path(exe) : real).parent_path();
+    }
+#endif
+    return {};
+}
+
+std::string resourceDir(const char* name) {
+    namespace fs = std::filesystem;
+    const fs::path exeDir = exeDirectory();
+    if (exeDir.empty()) return {};
+    std::error_code ec;
+#ifdef __APPLE__
+    // Brushkit.app/Contents/MacOS/brushkit -> Brushkit.app/Contents/Resources
+    const fs::path bundled = exeDir.parent_path() / "Resources" / name;
+    if (fs::exists(bundled, ec)) return bundled.string();
+#endif
+    const fs::path beside = exeDir / name;
+    if (fs::exists(beside, ec)) return beside.string();
+    return {};
 }
 
 // Portable releases keep shaders beside the executable. The source-tree
 // fallback keeps development hot reload available before packaging.
 static std::string shaderDir() {
-#ifdef _WIN32
-    char exe[MAX_PATH] = {};
-    if (GetModuleFileNameA(nullptr, exe, MAX_PATH)) {
-        const auto exeDir = std::filesystem::path(exe).parent_path();
+    const auto exeDir = exeDirectory();
+    if (!exeDir.empty()) {
         const auto source = std::filesystem::path(SBR_ROOT_DIR) / "shaders";
-        // In a CMake build tree F5 reads the editable source shaders.
-        if (std::filesystem::exists(exeDir / "CMakeCache.txt") &&
-            std::filesystem::exists(source)) return source.string() + "/";
-        const auto portable = exeDir / "shaders";
-        if (std::filesystem::exists(portable)) return portable.string() + "/";
+        // In a CMake build tree F5 reads the editable source shaders. On macOS
+        // the executable sits three levels into Brushkit.app.
+        auto dir = exeDir;
+        for (int up = 0; up < 4 && !dir.empty(); ++up, dir = dir.parent_path()) {
+            if (std::filesystem::exists(dir / "CMakeCache.txt") &&
+                std::filesystem::exists(source)) return source.string() + "/";
+        }
+        const std::string portable = resourceDir("shaders");
+        if (!portable.empty()) return portable + "/";
     }
-#endif
     return std::string(SBR_ROOT_DIR) + "/shaders/";
 }
 
@@ -243,17 +283,24 @@ GLuint createBuffer(GLenum target, GLsizeiptr bytes, const void* data, GLenum us
     return b;
 }
 
+#ifndef __APPLE__
 static void APIENTRY debugCb(GLenum, GLenum type, GLuint, GLenum severity,
                              GLsizei, const GLchar* msg, const void*) {
     if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) return;
     fprintf(stderr, "[GL%s] %s\n", type == GL_DEBUG_TYPE_ERROR ? " ERROR" : "", msg);
 }
 
+#endif
+
 void enableDebugOutput() {
+#ifdef __APPLE__
+    // The Metal layer reports its own errors on stderr.
+#else
     if (!glDebugMessageCallback) return;
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageCallback(debugCb, nullptr);
+#endif
 }
 
 } // namespace glu

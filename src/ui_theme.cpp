@@ -7,8 +7,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <map>
 #include <string>
+
+#include "gl_util.h"   // glu::resourceDir
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -26,6 +30,7 @@ constexpr ImVec4 hex(unsigned rgb, float a = 1.f) {
 }
 
 float g_scale = 1.f;
+float g_density = 1.f;
 
 // Fonts ship beside the executable (portable bundle and build tree alike, via
 // the POST_BUILD copy), with the source tree as a fallback -- the same order
@@ -43,6 +48,10 @@ std::string fontDir(const std::string& family) {
         const fs::path beside = fs::path(exe).parent_path() / "fonts";
         if (fs::exists(beside / probe)) return beside.string();
     }
+#endif
+#ifndef _WIN32
+    const std::string bundled = glu::resourceDir("fonts");
+    if (!bundled.empty() && fs::exists(fs::path(bundled) / probe)) return bundled;
 #endif
 #ifdef SBR_ROOT_DIR
     const fs::path source = fs::path(SBR_ROOT_DIR) / "assets" / "fonts";
@@ -83,13 +92,29 @@ ImFont* addFont(const std::string& path, float sizePx) {
     cfg.OversampleH = 2;      // ignored by FreeType, used by stb_truetype
     cfg.OversampleV = 1;
     cfg.PixelSnapH = true;
+    cfg.RasterizerDensity = g_density;
 #ifdef IMGUI_ENABLE_FREETYPE
     // Vertical-only hinting: crisp baselines and x-heights at 12-14 px while
     // keeping the face's own horizontal proportions.
     cfg.FontBuilderFlags = ImGuiFreeTypeBuilderFlags_LightHinting;
 #endif
-    return ImGui::GetIO().Fonts->AddFontFromFileTTF(path.c_str(), sizePx, &cfg,
-                                                    glyphRanges());
+    ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(path.c_str(), sizePx, &cfg,
+                                                            glyphRanges());
+#ifdef __APPLE__
+    // Shortcut glyphs (command, shift, option, control) are missing from the
+    // UI faces; borrow them from the system's symbol font so menus can show
+    // the keys the way every other Mac app does.
+    static const ImWchar keys[] = {0x2303, 0x2303, 0x2318, 0x2318, 0x2325, 0x2325,
+                                   0x21E7, 0x21E7, 0x232B, 0x232B, 0x238B, 0x238B, 0};
+    const char* symbols = "/System/Library/Fonts/Apple Symbols.ttf";
+    if (font && std::filesystem::exists(symbols)) {
+        ImFontConfig merge = cfg;
+        merge.MergeMode = true;
+        merge.GlyphMinAdvanceX = sizePx * 0.9f;   // keys line up in the shortcut column
+        ImGui::GetIO().Fonts->AddFontFromFileTTF(symbols, sizePx, &merge, keys);
+    }
+#endif
+    return font;
 }
 
 void loadFonts(float s) {
@@ -118,6 +143,16 @@ void loadFonts(float s) {
         // Graceful fallback: the system UI face, then ImGui's built-in one.
         atlas->Clear();
         F = Fonts{};
+#ifdef __APPLE__
+        const std::string sys = "/System/Library/Fonts/";
+        F.body = addFont(sys + "SFNS.ttf", size(T.body));
+        F.bodyStrong = addFont(sys + "SFNS.ttf", size(T.bodyStrong));
+        F.caption = addFont(sys + "SFNS.ttf", size(T.caption));
+        F.section = addFont(sys + "SFNS.ttf", size(T.section));
+        F.title = addFont(sys + "SFNS.ttf", size(T.title));
+        F.mono = addFont(sys + "SFNSMono.ttf", size(T.mono));
+        F.source = F.body ? "San Francisco (UI font files not found)" : "ImGui default (no fonts found)";
+#else
         const std::string win = "C:/Windows/Fonts/";
         F.body = addFont(win + "segoeui.ttf", size(T.body));
         F.bodyStrong = addFont(win + "seguisb.ttf", size(T.bodyStrong));
@@ -126,6 +161,7 @@ void loadFonts(float s) {
         F.title = addFont(win + "seguisb.ttf", size(T.title));
         F.mono = addFont(win + "consola.ttf", size(T.mono));
         F.source = F.body ? "Segoe UI (UI font files not found)" : "ImGui default (no fonts found)";
+#endif
         if (!F.body) {
             ImFontConfig cfg;
             cfg.SizePixels = size(13.f);
@@ -293,10 +329,31 @@ Fonts F;
 float scale() { return g_scale; }
 float px(float v) { return std::floor(v * g_scale + 0.5f); }
 
-void applyTheme(float contentScale) {
+void applyTheme(float contentScale, float rasterDensity) {
     g_scale = contentScale > 0.5f ? contentScale : 1.f;
+    g_density = rasterDensity > 0.5f ? rasterDensity : 1.f;
     loadFonts(g_scale);
     applyStyle(g_scale);
+}
+
+const char* keyLabel(const char* w) {
+#ifdef __APPLE__
+    static std::map<std::string, std::string> cache;
+    auto it = cache.find(w);
+    if (it != cache.end()) return it->second.c_str();
+    std::string s = w;
+    auto swap = [&](const char* from, const char* to) {
+        for (size_t p = s.find(from); p != std::string::npos; p = s.find(from, p + std::strlen(to)))
+            s.replace(p, std::strlen(from), to);
+    };
+    if (s == "F5") s = "\xE2\x8C\x98R";                     // Reload Shaders lives on Cmd+R
+    swap("Ctrl+Shift+", "\xE2\x87\xA7\xE2\x8C\x98");      // shift, command
+    swap("Ctrl+", "\xE2\x8C\x98");                         // command
+    swap("Alt+", "\xE2\x8C\xA5");                          // option
+    return cache.emplace(w, s).first->second.c_str();
+#else
+    return w;
+#endif
 }
 
 ImU32 col(const ImVec4& c) { return ImGui::GetColorU32(c); }

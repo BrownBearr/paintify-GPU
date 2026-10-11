@@ -202,7 +202,7 @@ bool reveal(const std::string& path) {
 
 } // namespace filedialog
 
-#else   // not Windows: no native dialogs, callers fall back to the CLI.
+#elif !defined(__APPLE__)   // macOS: mac/filedialog_mac.mm. Elsewhere no dialogs; use the CLI.
 
 namespace filedialog {
 void init() {}

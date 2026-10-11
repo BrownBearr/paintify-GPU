@@ -9,9 +9,14 @@
 #include <io.h>
 #define SBR_POPEN  _popen
 #define SBR_PCLOSE _pclose
+#define SBR_READ   "rb"
+#define SBR_WRITE  "wb"
 #else
+// POSIX popen takes only "r" or "w"; macOS rejects "rb" with EINVAL.
 #define SBR_POPEN  popen
 #define SBR_PCLOSE pclose
+#define SBR_READ   "r"
+#define SBR_WRITE  "w"
 #endif
 
 namespace media {
@@ -22,7 +27,20 @@ namespace {
 // command line -- so a command that starts with a quoted program path loses
 // them and breaks. Wrapping the entire command in one more pair, done by
 // `shellWrap` below, is the documented way round it.
+#ifdef _WIN32
 std::string q(const std::string& s) { return "\"" + s + "\""; }
+#else
+// /bin/sh: single quotes take everything literally ($, `, spaces), and an
+// embedded single quote is closed, escaped and reopened.
+std::string q(const std::string& s) {
+    std::string out = "'";
+    for (char c : s) {
+        if (c == '\'') out += "'\\''";
+        else out += c;
+    }
+    return out + "'";
+}
+#endif
 
 std::string shellWrap(const std::string& cmd) {
 #ifdef _WIN32
@@ -34,7 +52,7 @@ std::string shellWrap(const std::string& cmd) {
 
 // Runs a command and returns its stdout. Empty on failure.
 std::string capture(const std::string& cmd) {
-    FILE* p = SBR_POPEN(shellWrap(cmd).c_str(), "r");
+    FILE* p = SBR_POPEN(shellWrap(cmd).c_str(), SBR_READ);
     if (!p) return {};
     std::string out;
     char buf[512];
@@ -62,11 +80,16 @@ double parseRate(const std::string& s) {
 } // namespace
 
 bool haveFfmpeg(std::string* whichMissing) {
-    if (trim(capture("ffmpeg -version")).empty()) {
+#ifdef _WIN32
+    const char* quiet = "";
+#else
+    const char* quiet = " 2>/dev/null";   // "command not found" is the answer, not noise
+#endif
+    if (trim(capture(std::string("ffmpeg -version") + quiet)).empty()) {
         if (whichMissing) *whichMissing = "ffmpeg";
         return false;
     }
-    if (trim(capture("ffprobe -version")).empty()) {
+    if (trim(capture(std::string("ffprobe -version") + quiet)).empty()) {
         if (whichMissing) *whichMissing = "ffprobe";
         return false;
     }
@@ -138,7 +161,7 @@ bool Reader::open(const std::string& path, int w, int h, std::string* err) {
     const std::string cmd =
         "ffmpeg -v error -nostdin -i " + q(path) +
         " -f rawvideo -pix_fmt rgba -vsync 0 -";
-    m_pipe = SBR_POPEN(shellWrap(cmd).c_str(), "rb");
+    m_pipe = SBR_POPEN(shellWrap(cmd).c_str(), SBR_READ);
     if (!m_pipe) {
         if (err) *err = "could not start ffmpeg to read " + path;
         return false;
@@ -195,7 +218,7 @@ bool Writer::open(const std::string& path, int w, int h, const EncodeOptions& op
     // decode anything else.
     cmd += " -pix_fmt yuv420p -movflags +faststart " + q(path);
 
-    m_pipe = SBR_POPEN(shellWrap(cmd).c_str(), "wb");
+    m_pipe = SBR_POPEN(shellWrap(cmd).c_str(), SBR_WRITE);
     if (!m_pipe) {
         if (err) *err = "could not start ffmpeg to write " + path;
         return false;
@@ -270,7 +293,7 @@ bool readFrameAt(const std::string& path, double seconds, int w, int h,
         "ffmpeg -v error -nostdin -ss " + std::string(ss) + " -i " + q(path) +
         " -frames:v 1 -f rawvideo -pix_fmt rgba -";
 
-    FILE* p = SBR_POPEN(shellWrap(cmd).c_str(), "rb");
+    FILE* p = SBR_POPEN(shellWrap(cmd).c_str(), SBR_READ);
     if (!p) return false;
 
     const size_t want = size_t(w) * size_t(h) * 4;

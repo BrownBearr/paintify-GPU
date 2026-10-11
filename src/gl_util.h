@@ -1,10 +1,19 @@
 #pragma once
+#ifdef __APPLE__
+#include "mac/gl_metal.h"   // GL 4.6 subset on Metal: macOS has no compute in GL
+#else
 #include <glad/glad.h>
+#endif
 #include <string>
 #include <vector>
 #include <cstdint>
 
 namespace glu {
+
+// Folder holding a bundled resource directory ("shaders", "fonts"): beside
+// the executable on Windows, Contents/Resources in a macOS app bundle. Empty
+// when there is no such folder (a plain build tree uses the source checkout).
+std::string resourceDir(const char* name);
 
 // Reads a shader from shaders/, splicing any `#include "x.glsl"` lines and
 // emitting #line directives so compiler errors still point at the real file.
