@@ -91,6 +91,7 @@ Result translate(Stage stage, const std::string& glsl) {
         mo.platform = spirv_cross::CompilerMSL::Options::macOS;
         mo.set_msl_version(2, 3);
         mo.enable_decoration_binding = false;
+        mo.buffer_size_buffer_index = kBufferSizeSlot;
         msl.set_msl_options(mo);
 
         spirv_cross::CompilerGLSL::Options co = msl.get_common_options();
@@ -146,7 +147,8 @@ Result translate(Stage stage, const std::string& glsl) {
         for (const auto& b : res.sampled_images) {
             const uint32_t g = msl.get_decoration(b.id, spv::DecorationBinding);
             pin(b.id, SET_SAMPLER, g, 0, g, g);
-            r.resources.push_back({ResKind::Sampler, g, g, b.name});
+            r.resources.push_back({ResKind::Sampler, g, g, b.name,
+                                   bool(msl.get_type(b.type_id).image.arrayed)});
         }
         for (const auto& b : res.storage_images) {
             const uint32_t g = msl.get_decoration(b.id, spv::DecorationBinding);
@@ -166,6 +168,7 @@ Result translate(Stage stage, const std::string& glsl) {
         }
 
         r.msl = msl.compile();
+        r.needsBufferSizes = msl.needs_buffer_size_buffer();
         const auto entries = msl.get_entry_points_and_stages();
         r.entry = entries.empty() ? std::string("main0")
                                   : msl.get_cleansed_entry_point_name(entries[0].name,

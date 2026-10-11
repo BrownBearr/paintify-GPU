@@ -31,12 +31,16 @@ enum class ResKind { Storage, Uniform, Sampler, Image };
 constexpr uint32_t kUboBase = 12;
 constexpr uint32_t kDefaultBlockSlot = 15;
 constexpr uint32_t kImageBase = 16;
+// Where SPIRV-Cross reads storage-buffer sizes for GLSL's .length(): a uint
+// per [[buffer]] slot, in bytes.
+constexpr uint32_t kBufferSizeSlot = 30;
 
 struct Resource {
     ResKind kind;
     uint32_t glBinding;   // GL unit / binding point the host binds to
     uint32_t slot;        // Metal [[buffer]] / [[texture]] index
     std::string name;
+    bool array = false;   // sampler2DArray
 };
 
 // One member of the loose-uniform block: what glUniform* writes into.
@@ -55,6 +59,7 @@ struct Result {
     std::vector<UniformMember> uniforms;
     uint32_t uniformBlockSize = 0;
     uint32_t localSize[3] = {1, 1, 1};
+    bool needsBufferSizes = false;   // bind sizes at kBufferSizeSlot
 };
 
 Result translate(Stage stage, const std::string& glsl);

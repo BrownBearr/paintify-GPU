@@ -183,6 +183,7 @@ struct Shader {
 
 struct StageInfo {
     std::vector<mslx::Resource> resources;
+    bool bufferSizes = false;     // the shader calls .length() on an SSBO
     std::vector<uint8_t> block;   // the loose-uniform block's bytes
 };
 
@@ -263,6 +264,10 @@ struct Context {
     GLuint renderFbo = 0;             // the fbo `render` targets; 0 = screen
     id<MTLBlitCommandEncoder> blit = nil;
     id<MTLBuffer> dummy = nil;        // bound to unbound buffer slots
+    // Bound to sampler / image slots the current pass does not use. GL reads
+    // zero from an unbound unit; Metal leaves an empty slot undefined.
+    id<MTLTexture> dummy2D = nil, dummyArray = nil;
+    id<MTLSamplerState> dummySampler = nil;
 
     std::map<uint32_t, id<MTLSamplerState>> samplers;
 
@@ -576,12 +581,18 @@ void drawScreenQuad(const QuadArgs& a, id<MTLTexture> tex, id<MTLSamplerState> s
 template <class SetBuffer, class SetBytes, class SetTexture, class SetSampler>
 void bindStage(StageInfo& st, SetBuffer setBuffer, SetBytes setBytes, SetTexture setTexture,
                SetSampler setSampler) {
+    uint32_t sizes[mslx::kBufferSizeSlot] = {};
     for (const mslx::Resource& r : st.resources) {
         switch (r.kind) {
             case mslx::ResKind::Storage: {
                 Buffer* b = r.glBinding < 16 ? g->buffers.get(g->ssbo[r.glBinding]) : nullptr;
-                if (b && b->buf) setBuffer(b->buf, r.slot);
-                else { warnOnce("dispatch with an unbound storage buffer"); setBuffer(g->dummy, r.slot); }
+                if (b && b->buf) {
+                    setBuffer(b->buf, r.slot);
+                    if (r.slot < mslx::kBufferSizeSlot) sizes[r.slot] = uint32_t(b->size);
+                } else {
+                    // Legal in GL when the pass never touches it.
+                    setBuffer(g->dummy, r.slot);
+                }
                 break;
             }
             case mslx::ResKind::Uniform: {
@@ -597,19 +608,23 @@ void bindStage(StageInfo& st, SetBuffer setBuffer, SetBytes setBytes, SetTexture
                     setTexture(t->tex, r.slot);
                     setSampler(samplerFor(*t), r.glBinding);
                 } else {
-                    warnOnce("dispatch with an unbound sampler");
+                    setTexture(r.array ? g->dummyArray : g->dummy2D, r.slot);
+                    setSampler(g->dummySampler, r.glBinding);
                 }
                 break;
             }
             case mslx::ResKind::Image: {
                 Texture* t = r.glBinding < 8 ? g->textures.get(g->imageUnits[r.glBinding]) : nullptr;
-                if (t && t->tex) setTexture(t->tex, r.slot);
-                else warnOnce("dispatch with an unbound image");
+                // A write-only dummy would still need the right format; an
+                // unbound image is only ever declared, never stored to, so
+                // any texture keeps the slot defined.
+                setTexture(t && t->tex ? t->tex : g->dummy2D, r.slot);
                 break;
             }
         }
     }
     if (!st.block.empty()) setBytes(st.block.data(), st.block.size(), mslx::kDefaultBlockSlot);
+    if (st.bufferSizes) setBytes(sizes, sizeof(sizes), mslx::kBufferSizeSlot);
 }
 
 MTLBlendFactor blendFactor(GLenum f) {
@@ -715,6 +730,19 @@ bool init() {
         g->name = dev.name.UTF8String;
         g->dummy = [dev newBufferWithLength:256 options:MTLResourceStorageModeShared];
         std::memset(g->dummy.contents, 0, 256);
+        MTLTextureDescriptor* td =
+            [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA16Float
+                                                               width:1 height:1 mipmapped:NO];
+        td.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+        td.storageMode = MTLStorageModeShared;
+        g->dummy2D = [dev newTextureWithDescriptor:td];
+        td.textureType = MTLTextureType2DArray;
+        g->dummyArray = [dev newTextureWithDescriptor:td];
+        const uint16_t zero[4] = {0, 0, 0, 0};
+        [g->dummy2D replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 withBytes:zero bytesPerRow:8];
+        [g->dummyArray replaceRegion:MTLRegionMake2D(0, 0, 1, 1) mipmapLevel:0 slice:0
+                           withBytes:zero bytesPerRow:8 bytesPerImage:8];
+        g->dummySampler = [dev newSamplerStateWithDescriptor:[MTLSamplerDescriptor new]];
         buildQuadPipeline();
     }
     return true;
@@ -1197,6 +1225,7 @@ void glLinkProgram(GLuint pid) {
 
     auto addStage = [&](int index, const mslx::Result& r) {
         p->stage[index].resources = r.resources;
+        p->stage[index].bufferSizes = r.needsBufferSizes;
         // Rounded to 16: MSL's float3 is 16-byte aligned, so a block ending
         // in a vec3 is 4 bytes larger in Metal than its declared size.
         p->stage[index].block.assign((r.uniformBlockSize + 15u) & ~15u, 0);
