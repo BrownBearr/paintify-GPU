@@ -2,6 +2,10 @@
 
 A GPU painting editor for images and video, for Windows and macOS. The editor combines a Hertzmann stroke renderer with editable, era-inspired **brush textures**. Choosing an era changes the shape and surface of the mark: tip, bristles, load, dryout, edges, and raised paint. It does not apply that era's palette, composition, ground, or finishing effects.
 
+## Download
+
+Ready-to-run builds for Windows and macOS are on the [Releases page](https://github.com/BrownBearr/paintify-GPU/releases/latest): a ZIP for Windows x64 and a DMG each for Apple silicon and Intel Macs. To build from source instead, read on.
+
 ## Start
 
 Run tools\build.bat, then double-click run.bat. Drag an image or video onto run.bat to open it directly. The initial synthetic image is a demo; load a file to enable export.
