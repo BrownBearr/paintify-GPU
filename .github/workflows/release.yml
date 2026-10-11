@@ -7,7 +7,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
-    branches: [main, claude/zen-hamilton-dg01no]
+    branches: [main]
     paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
     inputs:
