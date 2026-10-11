@@ -100,9 +100,9 @@ jobs:
                   im = Image.open(f"out/{name}.png").convert("RGB")
               except OSError:
                   continue
-              im.thumbnail((320, 320))
+              im.thumbnail((200, 200))
               buf = io.BytesIO()
-              im.save(buf, "JPEG", quality=70)
+              im.save(buf, "JPEG", quality=55)
               print(f"PREVIEW {name} " + base64.b64encode(buf.getvalue()).decode())
           sys.exit(1 if bad else 0)
           PY
@@ -125,9 +125,9 @@ jobs:
                   im = Image.open(f"out/{name}.png").convert("RGB")
               except OSError:
                   continue
-              im.thumbnail((900, 900))
+              im.thumbnail((640, 640))
               buf = io.BytesIO()
-              im.save(buf, "JPEG", quality=60)
+              im.save(buf, "JPEG", quality=50)
               print(f"PREVIEW {name} " + base64.b64encode(buf.getvalue()).decode())
           PY
 
