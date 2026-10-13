@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Turn your photos and videos into paintings.</b><br>
-  Real brush strokes, placed one at a time. No AI, no neural networks.
+  Painted brushstrokes, designed for motion.
 </p>
 
 <p align="center">
@@ -19,11 +19,11 @@
   <img src="docs/media/hero-coffee.jpg" width="820" alt="A photo of an espresso cup on the left, the same photo painted in thick swirling oil strokes on the right">
 </p>
 
-## Painting, not filtering
+## Painted, stroke by stroke
 
-Paintify doesn't run your image through a style-transfer model, and it doesn't ask a server to guess what a painting should look like. It paints. It studies your picture, decides where a stroke is needed, follows the shapes and edges with a brush, and lays paint down stroke by stroke, coarse to fine, the way a painter blocks in a canvas and then works up the detail.
+Paintify studies your picture, decides where a stroke is needed, follows the shapes and edges with a brush, and lays paint down stroke by stroke, coarse to fine, the way a painter blocks in a canvas and then works up the detail.
 
-Every result is made of strokes you can control, so the same photo can become a loose wash or a dense, ridged impasto with a few slider moves. Because it's pure code running on your graphics card, it's fast, private, and gives the same painting every time.
+Every result is made of strokes you can control, so the same photo can become a loose wash or a dense, ridged impasto with a few slider moves. The strokes are built for moving pictures as much as stills: they follow the motion in your footage and hold steady where nothing moves. It all runs on your graphics card, so it's fast, private, and gives the same painting every time.
 
 <p align="center">
   <img src="docs/media/pair-rocket.jpg" width="820" alt="A night photo of a rocket on the launch pad, and the same scene painted with swirling strokes in the sky">
