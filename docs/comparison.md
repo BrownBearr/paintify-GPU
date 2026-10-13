@@ -150,7 +150,7 @@ The historical tables above used a reference image that is not distributed with 
 python -c "from PIL import Image; im=Image.open('assets/sample.jpg').convert('RGBA'); \
            open('src.bin','wb').write(im.tobytes())"
 node web_render.mjs impressionist 0 0 0.45      # ~3 minutes
-build\brushkit.exe --headless --in assets\sample.jpg --out gpu.png \
+build\paintify.exe --headless --in assets\sample.jpg --out gpu.png \
                   --preset impressionist --passes 8
 ```
 
@@ -169,7 +169,7 @@ stroke has one point — which `renderStrokeSolid` declines to draw. The web's o
 Verified directly: 200/200 strokes come back with a single point at curvature 0,
 0/200 at 0.25 and above.
 
-Brushkit seeds `lastDir` from the gradient on the first step instead. That is
+Paintify seeds `lastDir` from the gradient on the first step instead. That is
 bit-identical for every curvature above 0 — the blend reduces to the gradient
 direction either way — and turns curvature 0 into the straight dabs the preset
 is asking for.

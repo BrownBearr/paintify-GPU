@@ -6,7 +6,7 @@
 // a blit encoder for copies and uploads, and switching kind ends the current
 // encoder. Every resource uses Metal's default hazard tracking, and compute
 // encoders are serial, so a dispatch always sees everything encoded before
-// it -- which is what all of Brushkit's glMemoryBarrier calls ask for.
+// it -- which is what all of Paintify's glMemoryBarrier calls ask for.
 //
 // The buffer is committed only when the CPU has to see a result (a readback,
 // glFinish, a query) or a frame is presented, so a paint is one submission.
@@ -810,7 +810,7 @@ void poolPop(void* pool) { objc_autoreleasePoolPop(pool); }
 // ═══════════════════════════════════════════════════════════════════════════
 
 const GLubyte* glGetString(GLenum name) {
-    static std::string renderer, version = "Metal (Brushkit GL 4.6 subset)";
+    static std::string renderer, version = "Metal (Paintify GL 4.6 subset)";
     switch (name) {
         case GL_RENDERER: renderer = mgl::deviceName(); return (const GLubyte*)renderer.c_str();
         case GL_VENDOR: return (const GLubyte*)"Apple";
@@ -1185,7 +1185,7 @@ void glCompileShader(GLuint s) {
         if (!lib) {
             sh->ok = false;
             sh->log = std::string("Metal compiler: ") + err.localizedDescription.UTF8String;
-            if (std::getenv("BRUSHKIT_DUMP_MSL")) sh->log += "\n--- generated MSL ---\n" + sh->xlat.msl;
+            if (std::getenv("PAINTIFY_DUMP_MSL")) sh->log += "\n--- generated MSL ---\n" + sh->xlat.msl;
             return;
         }
         sh->fn = [lib newFunctionWithName:@(sh->xlat.entry.c_str())];

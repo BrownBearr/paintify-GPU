@@ -1,12 +1,12 @@
 #pragma once
-// The slice of OpenGL 4.6 that Brushkit uses, implemented on Metal.
+// The slice of OpenGL 4.6 that Paintify uses, implemented on Metal.
 //
 // macOS has no OpenGL past 4.1 and no compute shaders at all, so on Apple
 // platforms this header stands in for <glad/glad.h>. The renderer
 // (pipeline.cpp) and the program loader (gl_util.cpp) are shared with the
 // Windows build line for line; only what sits underneath them differs.
 //
-// Semantics follow GL where Brushkit depends on them:
+// Semantics follow GL where Paintify depends on them:
 //  - commands execute in submission order, and a write is visible to every
 //    later command (Metal's hazard tracking does what glMemoryBarrier did, so
 //    the barrier calls are no-ops);

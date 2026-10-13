@@ -31,7 +31,7 @@ void windowHints(bool visible) {
     glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_FALSE);
     glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_TRUE);
     glfwWindowHint(GLFW_COCOA_GRAPHICS_SWITCHING, GLFW_TRUE);
-    glfwWindowHintString(GLFW_COCOA_FRAME_NAME, "BrushkitMain");   // remembers its frame
+    glfwWindowHintString(GLFW_COCOA_FRAME_NAME, "PaintifyMain");   // remembers its frame
     if (!visible) glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 }
 
@@ -39,7 +39,7 @@ bool needsWindowForOffscreen() { return false; }
 
 bool initContext(GLFWwindow* win) {
     if (!mgl::init()) {
-        fprintf(stderr, "Brushkit needs a Metal-capable GPU.\n");
+        fprintf(stderr, "Paintify needs a Metal-capable GPU.\n");
         return false;
     }
     if (win) {

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-REM Build Brushkit with an installed MSVC toolchain, Ninja, and vcpkg.
+REM Build Paintify with an installed MSVC toolchain, Ninja, and vcpkg.
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 if not exist "%VSWHERE%" (
     echo Visual Studio Installer with C++ Build Tools is required.
@@ -26,7 +26,7 @@ if not exist "%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" (
     echo Set VCPKG_ROOT to your vcpkg installation directory.
     exit /b 1
 )
-if not defined BRUSHKIT_BUILD_DIR set "BRUSHKIT_BUILD_DIR=build"
+if not defined PAINTIFY_BUILD_DIR set "PAINTIFY_BUILD_DIR=build"
 cd /d "%~dp0.."
-cmake -S . -B "%BRUSHKIT_BUILD_DIR%" -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" || exit /b 1
-cmake --build "%BRUSHKIT_BUILD_DIR%" || exit /b 1
+cmake -S . -B "%PAINTIFY_BUILD_DIR%" -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA%" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" || exit /b 1
+cmake --build "%PAINTIFY_BUILD_DIR%" || exit /b 1

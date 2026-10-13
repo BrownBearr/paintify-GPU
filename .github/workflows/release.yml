@@ -2,7 +2,7 @@ name: Release
 
 # Builds the Windows ZIP and the macOS DMGs (Apple silicon and Intel) and
 # publishes them as a GitHub Release. Runs on a version tag (v0.3.0), on every
-# push to main (as v<BRUSHKIT_VERSION> from CMakeLists.txt, replacing that
+# push to main (as v<PAINTIFY_VERSION> from CMakeLists.txt, replacing that
 # release's files), or by hand from the Actions tab.
 on:
   push:
@@ -21,50 +21,7 @@ jobs:
     uses: ./.github/workflows/macos.yml
 
   windows:
-    runs-on: windows-latest
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}\..\vcpkg
-      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\..\vcpkg-cache
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-windows-
-
-      - name: Set up vcpkg
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
-          git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
-          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
-
-      - name: Build
-        shell: cmd
-        run: call tools\build.bat
-
-      - name: Smoke test
-        shell: cmd
-        run: build\brushkit.exe --list-styles
-
-      - name: Package ZIP
-        shell: pwsh
-        run: |
-          cmake --install build --prefix dist\Brushkit
-          # The runner's PATH also has Chocolatey's unrelated cpack.exe.
-          $cpack = Join-Path (Split-Path (Get-Command cmake).Source) cpack.exe
-          & $cpack --config build\CPackConfig.cmake -B dist
-          Get-ChildItem dist\*.zip | ForEach-Object {
-            Rename-Item $_.FullName "Brushkit-$((Select-String -Path CMakeLists.txt -Pattern 'set\(BRUSHKIT_VERSION (\S+)\)').Matches[0].Groups[1].Value)-Windows-x64.zip"
-          }
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: brushkit-windows-x64
-          path: dist/*.zip
+    uses: ./.github/workflows/windows.yml
 
   publish:
     needs: [macos, windows]
@@ -75,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: brushkit-*
+          pattern: paintify-*
           path: artifacts
 
       - name: Create or update the release
@@ -84,7 +41,7 @@ jobs:
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
         run: |
           if [ -z "$TAG" ]; then
-            TAG="v$(sed -n 's/^set(BRUSHKIT_VERSION \([^)]*\)).*/\1/p' CMakeLists.txt)"
+            TAG="v$(sed -n 's/^set(PAINTIFY_VERSION \([^)]*\)).*/\1/p' CMakeLists.txt)"
           fi
           echo "Publishing $TAG"
           mkdir upload
@@ -95,17 +52,17 @@ jobs:
 
           | Platform | File |
           |---|---|
-          | macOS, Apple silicon (M1 and later) | `Brushkit-*-macOS-arm64.dmg` |
-          | macOS, Intel | `Brushkit-*-macOS-x86_64.dmg` |
-          | Windows 10/11, x64 | `Brushkit-*-Windows-x64.zip` |
+          | macOS, Apple silicon (M1 and later) | `Paintify-*-macOS-arm64.dmg` |
+          | macOS, Intel | `Paintify-*-macOS-x86_64.dmg` |
+          | Windows 10/11, x64 | `Paintify-*-Windows-x64.zip` |
 
-          **macOS** (12 or later): open the DMG and drag Brushkit to Applications. The app is not notarized, so the first time right-click it and choose Open, or allow it under System Settings > Privacy & Security. Video needs ffmpeg: `brew install ffmpeg`.
+          **macOS** (12 or later): open the DMG and drag Paintify to Applications. The app is not notarized, so the first time right-click it and choose Open, or allow it under System Settings > Privacy & Security. Video needs ffmpeg: `brew install ffmpeg`.
 
-          **Windows** (OpenGL 4.6 GPU): unzip anywhere and run `run.bat` or `brushkit.exe`. Video needs ffmpeg and ffprobe on PATH.
+          **Windows** (OpenGL 4.6 GPU): unzip anywhere and run `run.bat` or `paintify.exe`. Video needs ffmpeg and ffprobe on PATH.
           NOTES
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" upload/* --clobber --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$TAG" upload/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-              --title "Brushkit ${TAG#v}" --notes-file notes.md
+              --title "Paintify ${TAG#v}" --notes-file notes.md
           fi

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon/brushkit.png" width="96" alt="">
+  <img src="assets/icon/paintify.png" width="96" alt="">
 </p>
 
 <h1 align="center">Paintify</h1>

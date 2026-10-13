@@ -1,13 +1,13 @@
-"""Render the Brushkit logo with Brushkit itself: an impasto sphere painted
+"""Render the Paintify logo with Paintify itself: an impasto sphere painted
 with the classic brush, its strokes swirling around the form.
 
 Draws a shaded cerulean circle, paints it headless with the given
-brushkit.exe, cuts the painted sphere out with a soft circular mask and
-writes assets/icon/brushkit.ico (16-256 px, for the exe, taskbar and Start
-menu) and assets/icon/brushkit.png (256 px, drawn in the app's top bar).
+paintify.exe, cuts the painted sphere out with a soft circular mask and
+writes assets/icon/paintify.ico (16-256 px, for the exe, taskbar and Start
+menu) and assets/icon/paintify.png (256 px, drawn in the app's top bar).
 Rendering is deterministic, so rerunning reproduces the same icon.
 
-    python tools/make_logo.py build/brushkit.exe
+    python tools/make_logo.py build/paintify.exe
 """
 import os
 import subprocess
@@ -70,10 +70,10 @@ def main():
                        check=True, cwd=os.path.dirname(exe),
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         icon = cut_sphere(Image.open(out)).resize((256, 256), Image.LANCZOS)
-    icon.save(os.path.join(OUT, "brushkit.png"))
+    icon.save(os.path.join(OUT, "paintify.png"))
     sizes = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48),
              (64, 64), (128, 128), (256, 256)]
-    icon.save(os.path.join(OUT, "brushkit.ico"), sizes=sizes)
+    icon.save(os.path.join(OUT, "paintify.ico"), sizes=sizes)
     print("wrote", OUT)
 
 

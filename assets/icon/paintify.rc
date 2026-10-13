@@ -1,0 +1,5 @@
+// Paintify app icon (exe, window, taskbar, Start menu) and the top-bar logo.
+// Regenerate the images with tools/make_logo.py.
+// GLFW loads the "GLFW_ICON" resource as the window class icon.
+GLFW_ICON      ICON   "paintify.ico"
+PAINTIFY_LOGO  RCDATA "paintify.png"

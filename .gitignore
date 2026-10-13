@@ -11,7 +11,7 @@ implementation_plan.md
 task.md
 imgui.ini
 build.log
-docs/brushkit/*.mp4
+docs/paintify/*.mp4
 __pycache__/
 
 build-review/

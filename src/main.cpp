@@ -111,7 +111,7 @@ struct Options {
 
 void usage() {
     printf(
-        "Brushkit -- GPU painting with editable historical brush textures\n\n"
+        "Paintify -- GPU painting with editable historical brush textures\n\n"
         " Brush textures\n"
         "  --style <name>          choose an era brush texture (--list-styles);\n"
         "                          'none' selects the classic tile brush\n"
@@ -748,7 +748,7 @@ int main(int argc, char** argv) {
     GLFWwindow* win = nullptr;
     if (interactive || gfx::needsWindowForOffscreen()) {
         gfx::windowHints(/*visible=*/!opt.headless);
-        win = glfwCreateWindow(1600, 900, "Brushkit", nullptr, nullptr);
+        win = glfwCreateWindow(1600, 900, "Paintify", nullptr, nullptr);
         if (!win && interactive) fprintf(stderr, "could not create the window\n");
     }
     if ((interactive && !win) || !gfx::initContext(win)) {
@@ -1027,7 +1027,7 @@ int main(int argc, char** argv) {
         uiScale = std::clamp(csx, 1.f, 4.f);
 #endif
         // For checking layouts at other scales on a 96 dpi screen.
-        if (const char* e = std::getenv("BRUSHKIT_UI_SCALE")) {
+        if (const char* e = std::getenv("PAINTIFY_UI_SCALE")) {
             const float f = std::strtof(e, nullptr);
             if (f >= 0.75f && f <= 4.f) uiScale = f;
         }
@@ -1044,7 +1044,7 @@ int main(int argc, char** argv) {
 
     // Top-bar logo: the paint drop compiled into the exe (assets/icon).
     GLuint logoTex = 0;
-    if (std::vector<unsigned char> png; loadEmbeddedResource("BRUSHKIT_LOGO", png)) {
+    if (std::vector<unsigned char> png; loadEmbeddedResource("PAINTIFY_LOGO", png)) {
         int lw = 0, lh = 0, ln = 0;
         if (unsigned char* lp = stbi_load_from_memory(png.data(), int(png.size()), &lw, &lh, &ln, 4)) {
             glGenTextures(1, &logoTex);
@@ -1160,7 +1160,7 @@ int main(int argc, char** argv) {
     static const std::vector<filedialog::Filter> kVideoFilter = {
         {"Video", "*.mp4;*.mov;*.mkv;*.avi;*.webm;*.m4v;*.wmv"}};
     static const std::vector<filedialog::Filter> kParamFilter = {
-        {"Brushkit look", "*.sbr"}};
+        {"Paintify look", "*.sbr"}};
 
     int backdrop = 0;                       // ui::Backdrop
     int inspectorTab = 0;                   // 0 = Look, 1 = Export
@@ -1984,7 +1984,7 @@ int main(int argc, char** argv) {
                                                  ImVec2(a.x + side, a.y + side));
             ImGui::SameLine(0.f, ui::px(ui::M.s2));
         }
-        ui::BarText(ui::F.section, ui::C.textPrimary, "Brushkit");
+        ui::BarText(ui::F.section, ui::C.textPrimary, "Paintify");
         ImGui::SameLine(0.f, ui::px(ui::M.s5));
 
         ImGui::BeginDisabled(exporting);
@@ -2881,7 +2881,7 @@ int main(int argc, char** argv) {
 
         // Window title follows the source.
         {
-            const std::string t = "Brushkit \xE2\x80\x94 " + sourceLabel();
+            const std::string t = "Paintify \xE2\x80\x94 " + sourceLabel();
             if (t != windowTitle) {
                 windowTitle = t;
                 glfwSetWindowTitle(win, windowTitle.c_str());

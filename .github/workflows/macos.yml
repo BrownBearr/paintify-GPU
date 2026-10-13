@@ -50,15 +50,15 @@ jobs:
 
       - name: Bundle check
         run: |
-          APP=build/Brushkit.app
+          APP=build/Paintify.app
           ls -R "$APP/Contents" | head -50
           plutil -lint "$APP/Contents/Info.plist"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          otool -L "$APP/Contents/MacOS/Brushkit"
+          otool -L "$APP/Contents/MacOS/Paintify"
 
       - name: Paint every brush style (headless, Metal)
         run: |
-          BK=build/Brushkit.app/Contents/MacOS/Brushkit
+          BK=build/Paintify.app/Contents/MacOS/Paintify
           mkdir -p out
           "$BK" --list-styles | tee out/styles.txt
           fail=0
@@ -111,13 +111,13 @@ jobs:
       - name: Launch the app and take a screenshot
         continue-on-error: true
         run: |
-          open build/Brushkit.app --args --in "$PWD/assets/sample.jpg" --style cezanne
+          open build/Paintify.app --args --in "$PWD/assets/sample.jpg" --style cezanne
           sleep 12
           screencapture -x out/screenshot-window.png || true
           osascript -e 'tell application "System Events" to keystroke "2" using command down' || true
           sleep 2
           screencapture -x out/screenshot-split.png || true
-          osascript -e 'tell application "Brushkit" to quit' || pkill -x Brushkit || true
+          osascript -e 'tell application "Paintify" to quit' || pkill -x Paintify || true
           python3 - <<'PY'
           import base64, io
           from PIL import Image
@@ -138,7 +138,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: brushkit-macos-${{ matrix.arch }}
+          name: paintify-macos-${{ matrix.arch }}
           path: |
             dist/*.dmg
             out/

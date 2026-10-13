@@ -944,7 +944,7 @@ void Pipeline::relax(TuningParams& p, const RenderConfig& cfg,
         // lose strokes the greedy phase did paint. Leaving the greedy canvas
         // alone is the honest outcome; say so rather than silently degrading.
         fprintf(stderr,
-                "Brushkit: %u strokes exceeds the relaxation pool (%u); skipping"
+                "Paintify: %u strokes exceeds the relaxation pool (%u); skipping"
                 " relaxation for this frame. Raise SBR_POOL_MAX or the"
                 " threshold, or use fewer/larger brush radii.\n",
                 m_poolCount, SBR_POOL_MAX);

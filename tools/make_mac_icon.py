@@ -1,4 +1,4 @@
-"""Build the macOS app icon (assets/icon/brushkit.icns) from brushkit.png.
+"""Build the macOS app icon (assets/icon/paintify.icns) from paintify.png.
 
 macOS icons sit on a rounded-square tile with a soft shadow (the Big Sur
 grid: an 824 px tile centred in 1024, corner radius ~185 px), so the
@@ -55,7 +55,7 @@ def main():
     canvas.paste((0, 0, 0, 255), (0, 0), ring)
 
     # The painted sphere, with its own contact shadow.
-    sphere = Image.open(os.path.join(ICON, "brushkit.png")).convert("RGBA")
+    sphere = Image.open(os.path.join(ICON, "paintify.png")).convert("RGBA")
     side = int(TILE * 0.80)
     sphere = sphere.resize((side, side), Image.LANCZOS)
     sx = (S - side) // 2
@@ -68,7 +68,7 @@ def main():
     canvas.paste((20, 30, 40, 255), (0, 0), contact)
     canvas.alpha_composite(sphere, (sx, sy))
 
-    out = os.path.join(ICON, "brushkit.icns")
+    out = os.path.join(ICON, "paintify.icns")
     canvas.save(out, sizes=[(16, 16), (32, 32), (64, 64), (128, 128), (256, 256),
                             (512, 512), (1024, 1024)])
     print("wrote", out)

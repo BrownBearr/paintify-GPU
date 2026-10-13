@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build Brushkit.app on macOS with the Xcode command line tools, CMake and vcpkg.
+# Build Paintify.app on macOS with the Xcode command line tools, CMake and vcpkg.
 #
-#   tools/build_mac.sh             build build/Brushkit.app
+#   tools/build_mac.sh             build build/Paintify.app
 #   tools/build_mac.sh --install   ...and copy it to /Applications
-#   tools/build_mac.sh --dmg       ...and package dist/Brushkit-<version>-macOS-<arch>.dmg
+#   tools/build_mac.sh --dmg       ...and package dist/Paintify-<version>-macOS-<arch>.dmg
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -18,20 +18,20 @@ if [ ! -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
     echo "  git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh"
     exit 1
 fi
-BUILD="${BRUSHKIT_BUILD_DIR:-build}"
+BUILD="${PAINTIFY_BUILD_DIR:-build}"
 GEN=()
 command -v ninja >/dev/null && GEN=(-G Ninja)
 
 cmake -S . -B "$BUILD" "${GEN[@]}" -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 cmake --build "$BUILD"
-echo "Built $BUILD/Brushkit.app"
+echo "Built $BUILD/Paintify.app"
 
 case "${1:-}" in
     --install)
-        rm -rf /Applications/Brushkit.app
-        ditto "$BUILD/Brushkit.app" /Applications/Brushkit.app
-        echo "Installed /Applications/Brushkit.app"
+        rm -rf /Applications/Paintify.app
+        ditto "$BUILD/Paintify.app" /Applications/Paintify.app
+        echo "Installed /Applications/Paintify.app"
         ;;
     --dmg)
         cpack --config "$BUILD/CPackConfig.cmake" -B dist

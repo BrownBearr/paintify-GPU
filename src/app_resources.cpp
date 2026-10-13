@@ -30,9 +30,9 @@ bool loadEmbeddedResource(const char* name, std::vector<unsigned char>& out) {
     // No resource section outside Windows: the same files ship in the app
     // bundle's Resources folder, with the source checkout as a fallback.
     out.clear();
-    if (std::strcmp(name, "BRUSHKIT_LOGO") != 0) return false;
-    std::string path = glu::resourceDir("brushkit.png");
-    if (path.empty()) path = std::string(SBR_ROOT_DIR) + "/assets/icon/brushkit.png";
+    if (std::strcmp(name, "PAINTIFY_LOGO") != 0) return false;
+    std::string path = glu::resourceDir("paintify.png");
+    if (path.empty()) path = std::string(SBR_ROOT_DIR) + "/assets/icon/paintify.png";
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return false;
     unsigned char chunk[65536];

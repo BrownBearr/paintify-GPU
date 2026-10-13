@@ -60,7 +60,7 @@ std::string resourceDir(const char* name) {
     if (exeDir.empty()) return {};
     std::error_code ec;
 #ifdef __APPLE__
-    // Brushkit.app/Contents/MacOS/brushkit -> Brushkit.app/Contents/Resources
+    // Paintify.app/Contents/MacOS/paintify -> Paintify.app/Contents/Resources
     const fs::path bundled = exeDir.parent_path() / "Resources" / name;
     if (fs::exists(bundled, ec)) return bundled.string();
 #endif
@@ -76,7 +76,7 @@ static std::string shaderDir() {
     if (!exeDir.empty()) {
         const auto source = std::filesystem::path(SBR_ROOT_DIR) / "shaders";
         // In a CMake build tree F5 reads the editable source shaders. On macOS
-        // the executable sits three levels into Brushkit.app.
+        // the executable sits three levels into Paintify.app.
         auto dir = exeDir;
         for (int up = 0; up < 4 && !dir.empty(); ++up, dir = dir.parent_path()) {
             if (std::filesystem::exists(dir / "CMakeCache.txt") &&

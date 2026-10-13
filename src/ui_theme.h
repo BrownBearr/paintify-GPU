@@ -3,7 +3,7 @@
 
 #include <string>
 
-// Brushkit's design tokens: one place for every colour, size and font the
+// Paintify's design tokens: one place for every colour, size and font the
 // interface uses. main.cpp and ui_widgets.cpp read these; nothing else should
 // hard-code a colour or a pixel size.
 //

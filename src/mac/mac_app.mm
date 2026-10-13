@@ -29,7 +29,7 @@ bool g_trackpadScroll = false;
 id g_target = nil;
 NSMenu* g_recentMenu = nil;
 
-NSString* const kRecentKey = @"BrushkitRecentPaths";
+NSString* const kRecentKey = @"PaintifyRecentPaths";
 const NSUInteger kRecentMax = 12;
 
 void queueOpened(NSArray<NSURL*>* urls) {
@@ -167,10 +167,10 @@ void buildMenuBar() {
     using C = macapp::Command;
     g_target = [BKMenuTarget new];
     NSMenu* bar = [NSMenu new];
-    NSString* app = @"Brushkit";
+    NSString* app = @"Paintify";
 
     NSMenu* appMenu = submenu(bar, app);
-    NSMenuItem* about = [[NSMenuItem alloc] initWithTitle:@"About Brushkit"
+    NSMenuItem* about = [[NSMenuItem alloc] initWithTitle:@"About Paintify"
                                                    action:@selector(about:) keyEquivalent:@""];
     about.target = g_target;
     [appMenu addItem:about];
@@ -179,12 +179,12 @@ void buildMenuBar() {
     sys(appMenu, @"Services", nil).submenu = services;
     NSApp.servicesMenu = services;
     [appMenu addItem:[NSMenuItem separatorItem]];
-    sys(appMenu, @"Hide Brushkit", @selector(hide:), @"h");
+    sys(appMenu, @"Hide Paintify", @selector(hide:), @"h");
     sys(appMenu, @"Hide Others", @selector(hideOtherApplications:), @"h",
         NSEventModifierFlagCommand | NSEventModifierFlagOption);
     sys(appMenu, @"Show All", @selector(unhideAllApplications:));
     [appMenu addItem:[NSMenuItem separatorItem]];
-    sys(appMenu, @"Quit Brushkit", @selector(terminate:), @"q");
+    sys(appMenu, @"Quit Paintify", @selector(terminate:), @"q");
 
     NSMenu* file = submenu(bar, @"File");
     item(file, @"Open Image…", C::OpenImage, @"o");
@@ -264,7 +264,7 @@ void extendPath() {
 
 // Launched from Finder the working directory is "/", which is read-only, and
 // relative defaults (the snapshot file, frames_out) would fail. Work in
-// ~/Pictures/Brushkit as the Windows installer's shortcut does. Started from a
+// ~/Pictures/Paintify as the Windows installer's shortcut does. Started from a
 // shell the directory is left alone, so relative command-line paths still work.
 void chooseWorkingFolder() {
     char cwd[4096] = {};
@@ -273,10 +273,10 @@ void chooseWorkingFolder() {
     NSURL* pictures = [[NSFileManager defaultManager] URLsForDirectory:NSPicturesDirectory
                                                              inDomains:NSUserDomainMask].firstObject;
     if (!pictures) return;
-    NSURL* dir = [pictures URLByAppendingPathComponent:@"Brushkit" isDirectory:YES];
+    NSURL* dir = [pictures URLByAppendingPathComponent:@"Paintify" isDirectory:YES];
     [[NSFileManager defaultManager] createDirectoryAtURL:dir withIntermediateDirectories:YES
                                               attributes:nil error:nil];
-    if (chdir(dir.fileSystemRepresentation) != 0) perror("chdir ~/Pictures/Brushkit");
+    if (chdir(dir.fileSystemRepresentation) != 0) perror("chdir ~/Pictures/Paintify");
 }
 
 } // namespace
@@ -307,7 +307,7 @@ void setupWindow(GLFWwindow* win, float r, float g, float b) {
     @autoreleasepool {
         if (NSApp.delegate) addDelegateMethods([NSApp.delegate class]);
         // A Dock icon and a menu bar even when run straight from the build
-        // tree rather than as Brushkit.app.
+        // tree rather than as Paintify.app.
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         buildMenuBar();
 

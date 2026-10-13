@@ -1,4 +1,4 @@
-# Brushkit architecture
+# Paintify architecture
 
 This renderer exists to reproduce [PainterlyImageCreatorWeb](https://github.com/BrownBearr/PainterlyImageCreatorWeb)'s
 `paintHertzmann` output on the GPU. That constraint decides most of the design:
@@ -440,7 +440,7 @@ behaviour is the web's, unchanged.
 
 # Style layer
 
-Brushkit has a classic renderer and a style layer. The earlier sections describe the classic rendering stages. This section records what the style system adds and the rules that keep it verifiable.
+Paintify has a classic renderer and a style layer. The earlier sections describe the classic rendering stages. This section records what the style system adds and the rules that keep it verifiable.
 
 ## The one invariant
 
@@ -496,8 +496,8 @@ brushkit paints a style in several passes with different brushes. Here each Hert
 ## Verification
 
 ```
-build\brushkit.exe --headless --in assets\sample.jpg --style none --out a.png
-build\brushkit.exe --headless --in <scene> --style <name> --out b.png    # each style
-build\brushkit.exe --video in.mp4 --out o.mp4 --style turner --temporal-diff 12 --flow 4
-build\brushkit.exe --in in.mp4 --style turner --play                     # GUI realtime, logs fps
+build\paintify.exe --headless --in assets\sample.jpg --style none --out a.png
+build\paintify.exe --headless --in <scene> --style <name> --out b.png    # each style
+build\paintify.exe --video in.mp4 --out o.mp4 --style turner --temporal-diff 12 --flow 4
+build\paintify.exe --in in.mp4 --style turner --play                     # GUI realtime, logs fps
 ```
