@@ -1,75 +1,88 @@
-# Brushkit
+<p align="center">
+  <img src="assets/icon/brushkit.png" width="96" alt="">
+</p>
 
-A GPU painting editor for images and video, for Windows and macOS. The editor combines a Hertzmann stroke renderer with editable, era-inspired **brush textures**. Choosing an era changes the shape and surface of the mark: tip, bristles, load, dryout, edges, and raised paint. It does not apply that era's palette, composition, ground, or finishing effects.
+<h1 align="center">Paintify</h1>
+
+<p align="center">
+  <b>Turn your photos and videos into paintings.</b><br>
+  Real brush strokes, placed one at a time. No AI, no neural networks.
+</p>
+
+<p align="center">
+  <a href="https://github.com/BrownBearr/paintify-GPU/releases/latest"><b>Download for Mac</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/BrownBearr/paintify-GPU/releases/latest"><b>Download for Windows</b></a>
+</p>
+
+<p align="center">
+  <img src="docs/media/hero-coffee.jpg" width="820" alt="A photo of an espresso cup on the left, the same photo painted in thick swirling oil strokes on the right">
+</p>
+
+## Painting, not filtering
+
+Paintify doesn't run your image through a style-transfer model, and it doesn't ask a server to guess what a painting should look like. It paints. It studies your picture, decides where a stroke is needed, follows the shapes and edges with a brush, and lays paint down stroke by stroke, coarse to fine, the way a painter blocks in a canvas and then works up the detail.
+
+Every result is made of strokes you can control, so the same photo can become a loose wash or a dense, ridged impasto with a few slider moves. Because it's pure code running on your graphics card, it's fast, private, and gives the same painting every time.
+
+<p align="center">
+  <img src="docs/media/pair-rocket.jpg" width="820" alt="A night photo of a rocket on the launch pad, and the same scene painted with swirling strokes in the sky">
+</p>
+
+## Video too
+
+Drop in a clip and Paintify paints every frame. Watch it play back painted in real time, then export the finished video.
+
+<p align="center">
+  <img src="docs/media/video-cat.webp" width="480" alt="A slow push-in on a cat's face, painted frame by frame in heavy oil strokes">
+</p>
+
+## Pick a brush
+
+Choose from more than twenty brushes inspired by the history of painting: Van Gogh's rhythmic ridges, Monet's broken colour, Seurat's dots, Cézanne's flat hatching, a palette knife, watercolour, ukiyo-e, sumi-e and more. A brush changes the shape and texture of every mark, while the colours stay true to your image.
+
+<p align="center">
+  <img src="docs/media/brushes-cat.jpg" width="820" alt="The same photo of a cat painted with four different brushes">
+</p>
+
+## How it works
+
+1. **Download** Paintify for Mac or Windows and open it.
+2. **Import** an image, a video, or a whole folder of images. Drag and drop works too.
+3. **Shape the look.** Pick a brush, then adjust stroke size, length, curvature, paint thickness and lighting until it looks right. A split view shows the original and the painting side by side as you work.
+4. **Export** a PNG, a batch of paintings, or a painted video.
+
+<p align="center">
+  <img src="docs/media/app.jpg" width="900" alt="The Paintify window: a split view of the original and painted espresso cup, with brush and stroke controls on the right">
+</p>
+
+<p align="center">
+  <img src="docs/media/pair-coffee.jpg" width="820" alt="The espresso cup photo and a softer, broken-colour painting of it">
+</p>
+
+## What you get
+
+- **Live preview.** Every change repaints in a moment, right on your graphics card.
+- **Your colours, your composition.** Paintify adds the brushwork and leaves the picture yours.
+- **Paint you can see.** Raised paint catches the light, with adjustable thickness and light direction.
+- **Steady video.** Strokes stay put where nothing moves, so footage doesn't flicker.
+- **Save your looks.** Store a set of brush and stroke settings and reuse it on any image.
+- **Batch mode.** Paint a whole folder in one go.
+- **Made for each platform.** A real Mac app on Apple silicon and Intel with a native menu bar, trackpad pinch and Retina display, and a native Windows app.
 
 ## Download
 
-Ready-to-run builds for Windows and macOS are on the [Releases page](https://github.com/BrownBearr/paintify-GPU/releases/latest): a ZIP for Windows x64 and a DMG each for Apple silicon and Intel Macs. To build from source instead, read on.
-
-## Start
-
-Run tools\build.bat, then double-click run.bat. Drag an image or video onto run.bat to open it directly. The initial synthetic image is a demo; load a file to enable export.
-
-To launch it like any installed app, run tools\install.bat. It builds Brushkit, installs it to %LOCALAPPDATA%\Programs\Brushkit (no admin rights), and adds a Start menu shortcut, so it opens from Start or by typing "Brushkit" in Windows search. Run it again after pulling changes to update; tools\install.bat -Uninstall removes it. The shortcut starts in Pictures\Brushkit, so the default export folder is created there.
-
-The editor is organized as Source → Brush texture → Stroke size → Stroke placement and path → Paint and colour → Video frame coherence → Export. **Size preset** changes only the coarse-to-fine brush radii. **Save look** and **Load look** save the complete editable settings to an .sbr file. Old .sbr files retain their saved full-look settings. Choosing a new brush clears their legacy artistic effects and per-layer overrides; radius and core path controls remain editable.
-
-The **stroke spacing** control sets candidate cell pitch to approximately radius × spacing. Higher values yield fewer candidate strokes. Stroke path controls alter geometry: maximum and minimum path length, curvature, and the image direction field govern tracing. **Keep strokes between frames** appears for video, reuses stable paint, and repaints moving areas. Switching it off also disables coherence for video export.
-
-## macOS
-
-Brushkit runs natively on macOS 12 or later, on Apple silicon and Intel Macs. macOS has no OpenGL compute shaders, so on the Mac the renderer runs on Metal: the same `pipeline.cpp` drives a small GL-on-Metal layer (`src/mac/gl_metal.mm`), and the same GLSL shaders are translated to Metal Shading Language at load time with glslang and SPIRV-Cross. Cmd+R reloads edited shaders exactly as F5 does on Windows.
-
-Build it with the Xcode command line tools, CMake and vcpkg:
-
-    xcode-select --install
-    brew install cmake ninja
-    git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
-    tools/build_mac.sh              # build/Brushkit.app
-    tools/build_mac.sh --install    # also copies it to /Applications
-    tools/build_mac.sh --dmg        # also writes dist/Brushkit-<version>-macOS-<arch>.dmg
-
-It behaves like a Mac app: a full menu bar (⌘O open, ⇧⌘O open look, ⌘S save look, ⌘E export, ⌘1/2/3 views, ⌘0 actual size, ⌘9 fit, ⌘R reload shaders, ⌃⌘F full screen), Open Recent, system open and save panels, Open With from Finder and drops on the Dock icon (images, videos, folders and `.sbr` looks), the file's proxy icon in the title bar and the unsaved dot while a look has changes, pinch to zoom and two-finger scroll to pan, Retina-sharp text, and no redrawing while nothing changes. Launched from Finder it works in ~/Pictures/Brushkit.
-
-Video needs ffmpeg (`brew install ffmpeg`); the app finds Homebrew's copy even when launched from Finder. The app is ad-hoc signed, not notarized: the first time, right-click it and choose Open (or allow it under System Settings > Privacy & Security).
-
-The command line is the executable inside the bundle:
-
-    build/Brushkit.app/Contents/MacOS/Brushkit --headless --in assets/sample.jpg --style cezanne --out painted.png
-
-Command-line jobs (`--headless`, `--video`, `--batch`, `--frames`) open no window on macOS.
-
-## Portable release
-
-On Windows this app requires an OpenGL 4.6 GPU. Build with MSVC Build Tools, CMake 3.21 or newer, Ninja, and vcpkg; dependencies are in vcpkg.json. tools\build.bat locates Visual Studio and accepts VCPKG_ROOT if vcpkg is elsewhere.
-
-    tools\build.bat
-    cmake --install build --prefix dist\Brushkit
-    cpack --config build\CPackConfig.cmake -B dist
-
-The ZIP contains brushkit.exe, its linked runtime DLLs, shaders, run.bat, and this README. Shader loading prefers the folder beside the executable, so the release can run outside the source checkout. Video import/export also requires ffmpeg and ffprobe on PATH; image editing does not.
-
-## Command line
-
-    build\brushkit.exe --list-styles
-    build\brushkit.exe --headless --in assets\sample.jpg --style cezanne --out painted.png
-    build\brushkit.exe --in photo.jpg --preset Fine
-    build\brushkit.exe --video clip.mp4 --out painted.mp4 --style vangogh --temporal-diff 12 --flow 4
-    build\brushkit.exe --batch photos --outdir painted --format png
-
---style chooses a brush texture. --preset chooses a radius set; legacy names such as impressionist remain accepted. --style-scale is an optional procedural brush width multiplier. --help lists the rest of the painting, video, and export flags.
-
-## Functional audit
-
-| Workflow | Status |
+| | |
 |---|---|
-| Still image rendering and PNG export | Working |
-| Batch images and frame sequences | Working; write failures now stop the job |
-| Video playback and export | Working when ffmpeg and ffprobe are installed |
-| .sbr save/load | Working with the existing version 1 layout |
-| Per-era brush marks | Working; historical full looks remain loadable from older saved files |
-| Field, colour, ground, and finish controls | Advanced controls; some effects depend on their parent mode |
-| Portable Windows ZIP | Builds with executable, runtime DLL, shaders, and launcher |
-| macOS app and DMG | Metal backend; built, painted with every brush style and packaged by CI on arm64 and Intel |
+| **Mac** (macOS 12 or later) | [Apple silicon DMG](https://github.com/BrownBearr/paintify-GPU/releases/latest) · [Intel DMG](https://github.com/BrownBearr/paintify-GPU/releases/latest) |
+| **Windows** (10 or 11, 64-bit) | [Windows ZIP](https://github.com/BrownBearr/paintify-GPU/releases/latest) |
 
-The renderer was ported from [PainterlyImageCreatorWeb](https://github.com/BrownBearr/PainterlyImageCreatorWeb). See [the comparison notes](docs/comparison.md) for the original GPU/CPU reference analysis.
+**Mac:** open the DMG and drag the app into Applications. The first time you launch it, right-click the app and choose **Open** (on macOS 15 and later, use **System Settings > Privacy & Security > Open Anyway**). This is needed once, because the app isn't yet registered with Apple.
+
+**Windows:** unzip the folder anywhere and double-click `run.bat`. If Windows SmartScreen appears, choose **More info > Run anyway**.
+
+**Video** import and export also need ffmpeg, a free video tool: on a Mac run `brew install ffmpeg`, on Windows [download it](https://ffmpeg.org/download.html) and add it to your PATH. Still images work without it.
+
+---
+
+<sub>Built on Hertzmann's painterly rendering, ported from <a href="https://github.com/BrownBearr/PainterlyImageCreatorWeb">PainterlyImageCreatorWeb</a> to the GPU. Developers: see <a href="docs/BUILDING.md">building from source and the command line</a>. Example photos: Chelsea the cat (Stefan van der Walt) and espresso cup (Rachel Michetti), both CC0; Falcon 9 launch (SpaceX), public domain.</sub>
