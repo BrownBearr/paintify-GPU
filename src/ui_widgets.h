@@ -3,7 +3,7 @@
 
 #include <imgui.h>
 
-// Brushkit's component library, built on the tokens in ui_theme.h. Every
+// Paintify's component library, built on the tokens in ui_theme.h. Every
 // control is one 28 px row so the inspector keeps a single vertical rhythm;
 // labels sit inside fields (secondary colour) and values are set in Geist Mono
 // (primary colour), right-aligned so digits never move while dragging.

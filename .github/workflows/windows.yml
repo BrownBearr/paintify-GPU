@@ -1,0 +1,57 @@
+name: Windows
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:   # release.yml builds the ZIP through this workflow
+
+jobs:
+  build:
+    name: x64
+    runs-on: windows-latest
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}\..\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\..\vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-windows-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-windows-
+
+      - name: Set up vcpkg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+
+      - name: Build
+        shell: cmd
+        run: call tools\build.bat
+
+      - name: Smoke test
+        shell: cmd
+        run: build\paintify.exe --list-styles
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          cmake --install build --prefix dist\Paintify
+          # The runner's PATH also has Chocolatey's unrelated cpack.exe.
+          $cpack = Join-Path (Split-Path (Get-Command cmake).Source) cpack.exe
+          & $cpack --config build\CPackConfig.cmake -B dist
+          Get-ChildItem dist\*.zip | ForEach-Object {
+            Rename-Item $_.FullName "Paintify-$((Select-String -Path CMakeLists.txt -Pattern 'set\(PAINTIFY_VERSION (\S+)\)').Matches[0].Groups[1].Value)-Windows-x64.zip"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paintify-windows-x64
+          path: dist/*.zip

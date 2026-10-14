@@ -92,7 +92,7 @@ bool save(const std::string& path, const TuningParams& p, const RenderConfig& cf
         return false;
     }
 
-    f << "# Brushkit parameters\n";
+    f << "# Paintify parameters\n";
     f << "version 1\n\n";
     f << "radii " << radiiToString(cfg.radii) << "\n";
     f << "underpaint " << underpaintName(cfg.underpaint) << "\n";
@@ -190,7 +190,7 @@ bool load(const std::string& path, TuningParams* p, RenderConfig* cfg,
 
         if (key == "version") {
             if (value != "1") {
-                if (err) *err = "unsupported Brushkit settings version " + value;
+                if (err) *err = "unsupported Paintify settings version " + value;
                 return false;
             }
             continue;

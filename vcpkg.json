@@ -1,15 +1,31 @@
 {
-  "name": "brushkit",
-  "version": "0.1.0",
+  "name": "paintify",
+  "version": "0.3.0",
   "builtin-baseline": "cc73782a88db48af17f8bfb8328d4cab3d4c246f",
   "dependencies": [
     "glfw3",
-    "glad",
     "glm",
     "stb",
     {
+      "name": "glad",
+      "platform": "!osx"
+    },
+    {
+      "name": "glslang",
+      "platform": "osx"
+    },
+    {
+      "name": "spirv-cross",
+      "platform": "osx"
+    },
+    {
       "name": "imgui",
-      "features": ["glfw-binding", "opengl3-binding", "freetype"]
+      "features": [
+        "glfw-binding",
+        "freetype",
+        { "name": "opengl3-binding", "platform": "!osx" },
+        { "name": "metal-binding", "platform": "osx" }
+      ]
     }
   ]
 }

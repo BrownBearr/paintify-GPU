@@ -3,7 +3,7 @@
 
 #include <string>
 
-// Brushkit's design tokens: one place for every colour, size and font the
+// Paintify's design tokens: one place for every colour, size and font the
 // interface uses. main.cpp and ui_widgets.cpp read these; nothing else should
 // hard-code a colour or a pixel size.
 //
@@ -153,7 +153,15 @@ float px(float v);
 // Rebuilds the font atlas and the style for `contentScale`. Call once after
 // ImGui::CreateContext(), and again when the window moves to a monitor with a
 // different scale (then recreate the backend's font texture).
-void applyTheme(float contentScale);
+//
+// `rasterDensity` rasterises the glyphs that much finer without changing any
+// metric. macOS lays out in points (scale 1) and draws on a 2x backing store,
+// so it passes 1 and 2; Windows lays out in pixels and passes scale and 1.
+void applyTheme(float contentScale, float rasterDensity = 1.f);
+
+// A shortcut written the Windows way ("Ctrl+Shift+O") as this platform shows
+// it: unchanged on Windows, "\u21E7\u2318O" on macOS.
+const char* keyLabel(const char* windowsLabel);
 
 // Colour helpers. ImGui::GetColorU32(ImVec4) applies the current style alpha,
 // which is what makes BeginDisabled() fade custom-drawn widgets too.

@@ -10,8 +10,10 @@
 // shell32 are already in MSVC's default link set, so this costs no new
 // dependency.
 //
-// Every entry point returns empty on cancel or on a non-Windows build, so the
-// caller only ever has to check for empty.
+// On macOS the same interface is NSOpenPanel / NSSavePanel (mac/filedialog_mac.mm).
+//
+// Every entry point returns empty on cancel or where there are no native
+// dialogs, so the caller only ever has to check for empty.
 namespace filedialog {
 
 // Call once before any dialog. Safe to call repeatedly.
@@ -35,7 +37,7 @@ std::string pickFolder(const char* title);
 std::string saveFile(const char* title, const std::vector<Filter>& filters,
                      const char* defaultName, const char* defaultExt);
 
-// Opens Explorer on `path`: a folder opens, a file is selected in its folder.
+// Opens Explorer (Finder on macOS) on `path`: a folder opens, a file is selected in its folder.
 // Returns false if it could not be shown.
 bool reveal(const std::string& path);
 

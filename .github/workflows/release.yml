@@ -1,0 +1,68 @@
+name: Release
+
+# Builds the Windows ZIP and the macOS DMGs (Apple silicon and Intel) and
+# publishes them as a GitHub Release. Runs on a version tag (v0.3.0), on every
+# push to main (as v<PAINTIFY_VERSION> from CMakeLists.txt, replacing that
+# release's files), or by hand from the Actions tab.
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create or update (e.g. v0.2.0)
+        required: true
+        default: v0.2.0
+
+jobs:
+  macos:
+    uses: ./.github/workflows/macos.yml
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: paintify-*
+          path: artifacts
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        run: |
+          if [ -z "$TAG" ]; then
+            TAG="v$(sed -n 's/^set(PAINTIFY_VERSION \([^)]*\)).*/\1/p' CMakeLists.txt)"
+          fi
+          echo "Publishing $TAG"
+          mkdir upload
+          find artifacts \( -name '*.dmg' -o -name '*.zip' \) -exec cp {} upload/ \;
+          ls -la upload
+          cat > notes.md <<'NOTES'
+          ## Download
+
+          | Platform | File |
+          |---|---|
+          | macOS, Apple silicon (M1 and later) | `Paintify-*-macOS-arm64.dmg` |
+          | macOS, Intel | `Paintify-*-macOS-x86_64.dmg` |
+          | Windows 10/11, x64 | `Paintify-*-Windows-x64.zip` |
+
+          **macOS** (12 or later): open the DMG and drag Paintify to Applications. The app is not notarized, so the first time right-click it and choose Open, or allow it under System Settings > Privacy & Security. Video needs ffmpeg: `brew install ffmpeg`.
+
+          **Windows** (OpenGL 4.6 GPU): unzip anywhere and run `run.bat` or `paintify.exe`. Video needs ffmpeg and ffprobe on PATH.
+          NOTES
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" upload/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" upload/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Paintify ${TAG#v}" --notes-file notes.md
+          fi
