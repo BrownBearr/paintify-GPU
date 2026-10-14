@@ -56,7 +56,11 @@ jobs:
           | macOS, Intel | `Paintify-*-macOS-x86_64.dmg` |
           | Windows 10/11, x64 | `Paintify-*-Windows-x64.zip` |
 
-          **macOS** (12 or later): open the DMG and drag Paintify to Applications. The app is not notarized, so the first time right-click it and choose Open, or allow it under System Settings > Privacy & Security. Video needs ffmpeg: `brew install ffmpeg`.
+          **macOS** (12 or later): open Terminal and paste
+
+              curl -fsSL https://raw.githubusercontent.com/BrownBearr/paintify-GPU/main/install.sh | bash
+
+          It installs Paintify into Applications and opens it, with no security prompt. Run it again to update. The DMG works too, but macOS blocks it at first launch because the app is not notarized yet. Video needs ffmpeg: `brew install ffmpeg`.
 
           **Windows** (OpenGL 4.6 GPU): unzip anywhere and run `run.bat` or `paintify.exe`. Video needs ffmpeg and ffprobe on PATH.
           NOTES

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/BrownBearr/paintify-GPU/releases/latest"><b>Download for Mac</b></a>
+  <a href="#download"><b>Install on Mac</b></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/BrownBearr/paintify-GPU/releases/latest"><b>Download for Windows</b></a>
 </p>
@@ -74,10 +74,16 @@ Choose from more than twenty brushes inspired by the history of painting: Van Go
 
 | | |
 |---|---|
-| **Mac** (macOS 12 or later) | [Apple silicon DMG](https://github.com/BrownBearr/paintify-GPU/releases/latest) · [Intel DMG](https://github.com/BrownBearr/paintify-GPU/releases/latest) |
+| **Mac** (macOS 12 or later) | One line in Terminal, below. Apple silicon and Intel. |
 | **Windows** (10 or 11, 64-bit) | [Windows ZIP](https://github.com/BrownBearr/paintify-GPU/releases/latest) |
 
-**Mac:** open the DMG and drag the app into Applications. The first time you launch it, right-click the app and choose **Open** (on macOS 15 and later, use **System Settings > Privacy & Security > Open Anyway**). This is needed once, because the app isn't yet registered with Apple.
+**Mac:** open **Terminal** (press ⌘ Space and type Terminal), paste this line and press Return:
+
+```
+curl -fsSL https://raw.githubusercontent.com/BrownBearr/paintify-GPU/main/install.sh | bash
+```
+
+Paintify installs into Applications and opens straight away. Run the same line again any time to update. (Prefer a DMG? It's on the [releases page](https://github.com/BrownBearr/paintify-GPU/releases/latest), but macOS will block it on first launch until the app is registered with Apple.)
 
 **Windows:** unzip the folder anywhere and double-click `run.bat`. If Windows SmartScreen appears, choose **More info > Run anyway**.
 

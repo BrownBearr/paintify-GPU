@@ -132,8 +132,20 @@ jobs:
               print(f"PREVIEW {name} " + base64.b64encode(buf.getvalue()).decode())
           PY
 
-      - name: Package DMG
-        run: cpack --config build/CPackConfig.cmake -B dist
+      - name: Package DMG and zip
+        run: |
+          cpack --config build/CPackConfig.cmake -B dist
+          ver=$(sed -n 's/^set(PAINTIFY_VERSION \([^)]*\)).*/\1/p' CMakeLists.txt)
+          # The zip is what install.sh downloads; ditto keeps the signature intact.
+          ditto -c -k --keepParent build/Paintify.app "dist/Paintify-$ver-macOS-${{ matrix.arch }}.zip"
+
+      - name: Test the one-line installer
+        run: |
+          PAINTIFY_ZIP=$(ls dist/*.zip) PAINTIFY_NO_OPEN=1 bash install.sh
+          app=/Applications/Paintify.app
+          [ -d "$app" ] || app="$HOME/Applications/Paintify.app"
+          codesign --verify --deep --strict "$app"
+          "$app/Contents/MacOS/Paintify" --list-styles | head -3
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -141,4 +153,5 @@ jobs:
           name: paintify-macos-${{ matrix.arch }}
           path: |
             dist/*.dmg
+            dist/*.zip
             out/
