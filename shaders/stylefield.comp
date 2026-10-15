@@ -11,9 +11,9 @@ layout(local_size_x = 16, local_size_y = 16) in;
 //
 // Output keeps trace.comp's contract: (gx, gy, gmag) with the stroke going
 // along perp(g) = (-gy, gx). A style field writes g = (sin a, -cos a) * M so
-// that perp(g) points along angle a, and M is floored at minFieldMag so strokes
-// carry on across flat regions instead of stopping at the gradient floor --
-// brushkit strokes do not die in a clear sky.
+// that perp(g) points along angle a. Pattern modes floor M at minFieldMag so
+// their strokes continue across flat regions. Follow image preserves the
+// source field and its gradient termination rule.
 //
 // Orientations are blended in doubled-angle form, so a and a + pi count as the
 // same direction, exactly like fields.py.
@@ -53,15 +53,38 @@ void main() {
     if (px.x >= size.x || px.y >= size.y) return;
     vec2 p = vec2(px) + 0.5;
 
-    float mag;
-    float aImg = imgAngle(px, mag);
-    // Where the image's own flow is confident, follow it; elsewhere fall back
-    // to the style's default hand (with_fallback in fields.py).
-    float conf = clamp(mag / max(ST_COHERENCE_MIN, 1e-4), 0.0, 1.0);
-    vec2 acc = d2(aImg) * conf + d2(fallbackAngle(p)) * (1.0 - conf);
-
     int mode = int(ST_FIELD_MODE + 0.5);
     float mixW = clamp(ST_FIELD_MIX, 0.0, 1.0);
+    vec4 source = texelFetch(uGrad, px, 0);
+    if (mode == 0 || mixW == 0.0) {
+        // Follow image is the source field itself. A weak Sobel magnitude
+        // still gives a valid tangent: blending it with a fixed fallback
+        // made soft gradients converge on the same diagonal for every brush.
+        // Keep its magnitude too, so the trace's gradient floor and curvature
+        // weighting behave exactly as they do with the classic tile brush.
+        vec4 g = source;
+        float rotation = layerB().z;
+        if (ST_PERTURB > 0.0)
+            rotation += ST_PERTURB * fbm(p / max(ST_PERTURB_SCALE, 4.0), 3, 621u);
+        if (rotation != 0.0) {
+            float cs = cos(rotation), sn = sin(rotation);
+            g.xy = vec2(g.x * cs - g.y * sn, g.x * sn + g.y * cs);
+        }
+        // In a truly flat region there is no image direction to follow.
+        // Preserve that zero instead of inventing a full-length diagonal.
+        imageStore(uOut, px, g);
+        return;
+    }
+
+    float mag;
+    float aImg = imgAngle(px, mag);
+    // Pattern strength blends from the actual image direction. Confidence
+    // limits the curl/wave patterns below; it must not replace a resolvable
+    // source tangent with the fallback angle before that blend even starts.
+    float conf = clamp(mag / max(ST_COHERENCE_MIN, 1e-4), 0.0, 1.0);
+    bool hasImage = dot(source.xy, source.xy) > 0.0;
+    vec2 acc = d2(hasImage ? aImg : fallbackAngle(p));
+
     if (mode == 1) {
         // Turner: tangential flow around the eye, tilted inward so it spirals
         // rather than rings, fading back to the motif's flow with distance.
@@ -71,7 +94,8 @@ void main() {
         float r = length(dv) / max(IMG_SIZE.x, IMG_SIZE.y);
         float a = atan(dv.y, dv.x) + 0.5 * PI + ST_VORTEX_SPIRAL;
         float wv = exp(-pow(r / max(ST_VORTEX_RADIUS, 1e-3), 2.0)) * mixW;
-        acc = acc * (0.95 - 0.9 * wv) + d2(a) * (0.05 + 0.9 * wv);
+        float w = 0.05 * mixW + 0.9 * wv;
+        acc = mix(acc, d2(a), w);
     } else if (mode == 2) {
         // Cezanne: piecewise-constant over Voronoi patches. Every hatch inside
         // one patch takes the angle the flow has at the patch's seed.
@@ -102,9 +126,18 @@ void main() {
         acc = mix(acc, d2(radians(ST_FALLBACK_ANGLE)), mixW);
     }
 
-    float ang = 0.5 * atan(acc.y, acc.x) + layerB().z;   // e.g. pastel cross-hatching
+    float ang = 0.5 * atan(acc.y, acc.x);
+    // Doubled angles describe an unoriented axis. Choose the sign nearest the
+    // source vector so a tiny pattern amount cannot reverse the initial walk.
+    if (hasImage && dot(vec2(sin(ang), -cos(ang)), source.xy) < 0.0) ang += PI;
+    ang += layerB().z;   // e.g. pastel cross-hatching
     if (ST_PERTURB > 0.0) ang += ST_PERTURB * fbm(p / max(ST_PERTURB_SCALE, 4.0), 3, 621u);
 
-    float M = max(mag, ST_MIN_FIELD_MAG);
-    imageStore(uOut, px, vec4(sin(ang) * M, -cos(ang) * M, M, 0.0));
+    // A vanishing pattern strength also converges to the source magnitude
+    // and curvature weight (tensor directions may be unit length while .z is
+    // small). Only the chosen pattern supplies paint flow in flat regions.
+    float patternMag = max(mag, ST_MIN_FIELD_MAG);
+    float vectorLen = mix(length(source.xy), patternMag, mixW);
+    float M = mix(mag, patternMag, mixW);
+    imageStore(uOut, px, vec4(sin(ang) * vectorLen, -cos(ang) * vectorLen, M, 0.0));
 }

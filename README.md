@@ -39,7 +39,7 @@ Drop in a clip and Paintify paints every frame. Watch it play back painted in re
 
 ## Pick a brush
 
-Choose from more than twenty brushes inspired by the history of painting: Van Gogh's rhythmic ridges, Monet's broken colour, Seurat's dots, Cézanne's flat hatching, a palette knife, watercolour, ukiyo-e, sumi-e and more. A brush changes the shape and texture of every mark, while the colours stay true to your image.
+Choose from more than twenty brushes inspired by the history of painting: Van Gogh's rhythmic ridges, Monet's broken colour, Seurat's dots, Cézanne's flat hatching, a palette knife, watercolour, ukiyo-e, sumi-e and more. A brush changes the shape and texture of every mark, while the colours stay true to your image. Changing brushes also preserves the stroke paths, colour, ground, and finish settings in a loaded look.
 
 <p align="center">
   <img src="docs/media/brushes-cat.jpg" width="820" alt="The same photo of a cat painted with four different brushes">

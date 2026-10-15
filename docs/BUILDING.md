@@ -10,9 +10,11 @@ Run tools\build.bat, then double-click run.bat. Drag an image or video onto run.
 
 To launch it like any installed app, run tools\install.bat. It builds Paintify, installs it to %LOCALAPPDATA%\Programs\Paintify (no admin rights), and adds a Start menu shortcut, so it opens from Start or by typing "Paintify" in Windows search. Run it again after pulling changes to update; tools\install.bat -Uninstall removes it. The shortcut starts in Pictures\Paintify, so the default export folder is created there.
 
-The editor is organized as Source → Brush texture → Stroke size → Stroke placement and path → Paint and colour → Video frame coherence → Export. **Size preset** changes only the coarse-to-fine brush radii. **Save look** and **Load look** save the complete editable settings to an .sbr file. Old .sbr files retain their saved full-look settings. Choosing a new brush clears their legacy artistic effects and per-layer overrides; radius and core path controls remain editable.
+The editor is organized as Source → Brush texture → Stroke size → Stroke placement and path → Paint and colour → Video frame coherence → Export. **Size preset** changes only the coarse-to-fine brush radii. **Save look** and **Load look** save the complete editable settings to an .sbr file. Old .sbr files retain their saved full-look settings. Choosing a new brush changes the mark while preserving the look's colour, ground, finish, and per-layer stroke settings.
 
 The **stroke spacing** control sets candidate cell pitch to approximately radius × spacing. Higher values yield fewer candidate strokes. Stroke path controls alter geometry: maximum and minimum path length, curvature, and the image direction field govern tracing. **Keep strokes between frames** appears for video, reuses stable paint, and repaints moving areas. Switching it off also disables coherence for video export.
+
+**Follow image** preserves the source direction and magnitude, including soft gradients. Brush textures share that path. Select Swirl, Patches, Curl, Waves, or Fixed angle to add a direction pattern; Pattern strength zero restores the image field. Run `tools\flow_regression.bat` for the GPU direction regression checks; see [the regression guide](../tools/flow_regression.md).
 
 ## macOS
 

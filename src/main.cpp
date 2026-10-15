@@ -1075,6 +1075,8 @@ int main(int argc, char** argv) {
     bool temporal = params.frameDiffThreshold > 0.f;
     bool temporalChoiceMade = false;
     bool tensorOn = params.tensorSigma > 0.f;
+    float tensorSigmaValue = params.tensorSigma > 0.f
+                                 ? params.tensorSigma : 2.f;
     ViewMode view = ViewMode::Split;   // start split so the input is visible
     std::string shaderMsg = "Shaders compiled";
     View viewCtl;
@@ -1115,6 +1117,7 @@ int main(int argc, char** argv) {
         radiiText = radiiToString(cfg.radii);
         snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
         tensorOn = params.tensorSigma > 0.f;
+        if (tensorOn) tensorSigmaValue = params.tensorSigma;
     };
 
     // --- realtime playback of a loaded video --------------------------------
@@ -1262,6 +1265,7 @@ int main(int argc, char** argv) {
         radiiText = radiiToString(cfg.radii);
         snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
         tensorOn = params.tensorSigma > 0.f;
+        if (tensorOn) tensorSigmaValue = params.tensorSigma;
         pipe.buildBrushTiles(cfg.radii, cfg.bristleDensity);
         gui.status = perr.empty() ? ("Opened look " + fileName(p))
                                   : (fileName(p) + ": " + perr);
@@ -1408,21 +1412,11 @@ int main(int argc, char** argv) {
                                   sl[size_t(i)].years);
                     if (ui::SelectItem(sl[size_t(i)].name, i == guiStyle, sub)) {
                         auto choose = [&, i]() {
-                            if (customLookActive) {
-                                cfg.layerSpecs.clear();
-                                styleP = StyleParams{};
-                            }
                             guiStyle = i;
                             restyle();
                             lookDirty = true;
                         };
-                        if (customLookActive)
-                            askConfirm("Replace the loaded look?",
-                                       "The loaded look carries its own colour, ground and "
-                                       "finish effects and per-layer stroke paths. Choosing a "
-                                       "brush clears them.",
-                                       "Choose brush", choose);
-                        else choose();
+                        choose();
                     }
                 }
                 ui::EndSelect();
@@ -1436,8 +1430,7 @@ int main(int argc, char** argv) {
             else
                 ui::Caption("Original tile brush. Tune its texture below.");
             if (customLookActive)
-                ui::Notice(ui::Tone::Accent, "A loaded look is active. Choosing a brush clears "
-                                             "its effects.");
+                ui::Notice(ui::Tone::Accent, "Loaded look settings stay active when changing brushes.");
 
             // Stroke size: a preset, or "Custom" when the radii match none.
             {
@@ -1461,6 +1454,7 @@ int main(int argc, char** argv) {
                                 cfg.layerSpecs.clear();
                                 snprintf(radiiBuf, sizeof(radiiBuf), "%s", radiiText.c_str());
                                 tensorOn = params.tensorSigma > 0.f;
+                                if (tensorOn) tensorSigmaValue = params.tensorSigma;
                                 lookDirty = true;
                             };
                             if (!cfg.layerSpecs.empty())
@@ -1539,7 +1533,8 @@ int main(int argc, char** argv) {
                 ui::GroupLabel("Relief");
                 const bool finishLights = styleP.enabled > 0.5f && styleP.finish > 0.f;
                 sf("Thickness", &params.impastoStrength, 0.f, 0.5f, "%.2f",
-                   &kDefP.impastoStrength, "Paint height accumulated per stroke.");
+                   &kDefP.impastoStrength,
+                   "Paint height accumulated per stroke. Visible when Light strength or finish relief lighting is enabled.");
                 ui::BeginDisabledWhy(finishLights,
                                      "Finish effects light the relief instead (Ground & finish).");
                 sf("Light strength", &params.impastoLight, 0.f, 0.5f, "%.2f",
@@ -1608,8 +1603,9 @@ int main(int argc, char** argv) {
                     ui::EndSelect();
                 }
                 fm = std::clamp(int(s.fieldMode + 0.5f), 0, 5);
-                lf("Pattern strength", &s.fieldMix, 0.f, 1.f, "%.2f", &kDefS.fieldMix,
-                   "0 = follow the image, 1 = follow the pattern.");
+                if (fm != 0)
+                    lf("Pattern strength", &s.fieldMix, 0.f, 1.f, "%.2f", &kDefS.fieldMix,
+                       "0 = follow the image; higher values add more of the selected pattern.");
                 lf("Wobble", &s.perturb, 0.f, 1.5f, "%.2f", &kDefS.perturb);
                 ui::BeginDisabledWhy(fm != 1, "Only for the Swirl direction source.");
                 bool av = s.autoVortex > 0.5f;
@@ -1621,13 +1617,43 @@ int main(int argc, char** argv) {
                 lf("Spiral twist", &s.vortexSpiral, -1.5f, 1.5f, "%.2f", &kDefS.vortexSpiral);
                 lf("Swirl size", &s.vortexRadius, 0.05f, 1.f, "%.2f", &kDefS.vortexRadius);
                 ui::EndDisabledWhy();
+                if (fm == 2) {
+                    lf("Patch size", &s.patchCell, 4.f, 160.f, "%.0f", &kDefS.patchCell,
+                       "Size of each piecewise direction patch.", "px");
+                    lf("Patch jitter", &s.patchJitter, 0.f, 1.5f, "%.2f", &kDefS.patchJitter,
+                       "Random angle added to each patch.", "rad");
+                    lf("Patch quantization", &s.patchQuant, 0.f, 1.5f, "%.2f", &kDefS.patchQuant,
+                       "Round patch angles to this interval. 0 = continuous.", "rad");
+                } else if (fm == 3) {
+                    lf("Curl scale", &s.curlScale, 8.f, 600.f, "%.0f", &kDefS.curlScale,
+                       "Size of the procedural curl pattern.", "px");
+                } else if (fm == 4) {
+                    lf("Wave length", &s.waveLen, 8.f, 1000.f, "%.0f", &kDefS.waveLen,
+                       "Distance between wave cycles.", "px");
+                    lf("Wave amplitude", &s.waveAmp, 0.f, 2.f, "%.2f", &kDefS.waveAmp,
+                       "Direction swing across each wave.", "rad");
+                    float waveDegrees = s.waveAngle * (180.f / 3.14159265358979323846f);
+                    if (lf("Wave angle", &waveDegrees, -180.f, 180.f, "%.0f", nullptr,
+                           "Direction the wave bands run.", "\xC2\xB0"))
+                        s.waveAngle = waveDegrees * (3.14159265358979323846f / 180.f);
+                } else if (fm == 5) {
+                    lf("Angle", &s.fallbackAngle, -180.f, 180.f, "%.0f", &kDefS.fallbackAngle,
+                       "Direction of strokes in the Fixed angle mode.", "\xC2\xB0");
+                }
 
                 ui::GroupLabel("Direction smoothing");
-                ui::Toggle("Smooth directions", &tensorOn,
-                           "Uses a smoother direction field (structure tensor). Good for "
-                           "faces and soft gradients.");
+                if (ui::Toggle("Smooth directions", &tensorOn,
+                               "Uses a smoother direction field (structure tensor). Good for "
+                               "faces and soft gradients.")) {
+                    params.tensorSigma = tensorOn ? tensorSigmaValue : 0.f;
+                    settingsChanged = true;
+                }
                 ui::BeginDisabledWhy(!tensorOn, "Turn on Smooth directions first.");
-                sf("Amount##tensor", &params.tensorSigma, 0.5f, 8.f, "%.1f", nullptr);
+                const float tensorSigmaMin = std::min(0.5f, tensorSigmaValue);
+                const float tensorSigmaMax = std::max(8.f, tensorSigmaValue);
+                if (sf("Amount##tensor", &tensorSigmaValue, tensorSigmaMin, tensorSigmaMax,
+                       "%.1f", nullptr) && tensorOn)
+                    params.tensorSigma = tensorSigmaValue;
                 ui::EndDisabledWhy();
                 // Edge Tangent Flow: a filter on the field, not a stroke setting.
                 const int defEtf = kDefC.etfIterations;
@@ -2755,7 +2781,7 @@ int main(int argc, char** argv) {
         }
 
         const double t0 = glfwGetTime();
-        params.tensorSigma = tensorOn ? std::max(0.1f, params.tensorSigma) : 0.f;
+        params.tensorSigma = tensorOn ? tensorSigmaValue : 0.f;
         // Paint only when an input actually changed: a still that nobody is
         // touching is painted once, not 60 times a second.
         painted = pipe.renderIfChanged(params, cfg, playing && temporal);
