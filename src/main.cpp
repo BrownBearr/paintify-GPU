@@ -101,7 +101,7 @@ struct Options {
     bool relaxLog = false;
     bool etfLog = false;
     bool flowLog = false;
-    bool jitterPerFrame = false;
+    int jitterPerFrame = -1; // -1 preserves a saved look; 0/1 are explicit overrides
     // brushkit
     std::string style;              // empty / "none" = classic tile brush
     float styleScale = NAN;         // NaN = width multiplier 1
@@ -156,6 +156,8 @@ void usage() {
         "  --dry-brush <0..1>      opacity falloff along the stroke\n"
         "  --size/--angle/--opacity-jitter <f>   per-stroke variation\n"
         "  --underpaint <mode>     blur | none | average\n"
+        "  --jitter-per-frame    vary strokes on each new video frame\n"
+        "  --no-jitter-per-frame keep stroke variation repeatable\n"
         "\n Video and batch\n"
         "  --video <in> --out <out.mp4>    paint a video; frames stream through\n"
         "                          ffmpeg as raw RGBA, nothing hits the disk.\n"
@@ -235,7 +237,8 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--relax-log")       o.relaxLog = true;
         else if (a == "--etf-log")         o.etfLog = true;
         else if (a == "--flow-log")        o.flowLog = true;
-        else if (a == "--jitter-per-frame") o.jitterPerFrame = true;
+        else if (a == "--jitter-per-frame") o.jitterPerFrame = 1;
+        else if (a == "--no-jitter-per-frame") o.jitterPerFrame = 0;
         else if (a == "--style")           o.style = next(i);
         else if (a == "--style-scale")     o.styleScale = std::strtof(next(i), nullptr);
         else if (a == "--list-styles")     o.listStyles = true;
@@ -328,7 +331,7 @@ void applyOverrides(const Options& o, TuningParams& p, RenderConfig& cfg,
     set(p.relaxMoveScale, o.relaxMove);
     set(p.relaxCandidates, o.relaxCands);
     set(p.relaxRemove, o.relaxRemove);
-    p.jitterPerFrame = o.jitterPerFrame ? 1.f : 0.f;
+    if (o.jitterPerFrame >= 0) p.jitterPerFrame = float(o.jitterPerFrame);
 }
 
 // Fallback subject when no image is supplied: smooth colour ramps plus a few
@@ -411,6 +414,7 @@ struct Gui {
     std::vector<std::string> queue;        // Images: the files to paint
     media::VideoInfo video;                // valid when kind == Video
     double previewAt = 0.0;                // preview position, seconds
+    uint64_t sourceFrame = 0;               // decoded frame, not display refresh count
     double previewRequested = -1.0;        // set on slider release, -1 = idle
     int previewDelay = 0;                  // frames since the release
 
@@ -442,6 +446,7 @@ bool loadVideoPreview(Pipeline& pipe, Gui& gui, std::string* note) {
                             gui.video.width, gui.video.height, frame))
         return false;
     pipe.setSource(frame.data(), gui.video.width, gui.video.height);
+    gui.sourceFrame = uint64_t(std::max(0.0, std::round(gui.previewAt * gui.video.fps)));
     pipe.resetTemporal();
 
     char buf[512];
@@ -1073,7 +1078,12 @@ int main(int argc, char** argv) {
     });
 
     bool temporal = params.frameDiffThreshold > 0.f;
-    bool temporalChoiceMade = false;
+    bool temporalChoiceMade = !std::isnan(opt.temporalDiff) || !opt.paramsFile.empty();
+    float temporalDiffValue = temporal ? params.frameDiffThreshold : 12.f;
+    if (!temporalChoiceMade) {
+        temporal = true;
+        params.frameDiffThreshold = temporalDiffValue;
+    }
     bool tensorOn = params.tensorSigma > 0.f;
     float tensorSigmaValue = params.tensorSigma > 0.f
                                  ? params.tensorSigma : 2.f;
@@ -1140,11 +1150,11 @@ int main(int argc, char** argv) {
         if (!playing) { gui.status = perr; gui.statusIsError = true; return false; }
         if (!temporalChoiceMade) {
             if (!temporal) {
-                gui.status = "Steady strokes turned on for playback";
+                gui.status = "Keep stable strokes selected for playback";
                 gui.statusIsError = false;
             }
             temporal = true;
-            if (params.frameDiffThreshold <= 0.f) params.frameDiffThreshold = 12.f;
+            params.frameDiffThreshold = temporalDiffValue;
             if (cfg.flowLevels <= 0) cfg.flowLevels = 4;
         }
         return true;
@@ -1254,6 +1264,10 @@ int main(int argc, char** argv) {
         // Commit the whole look only after the file is validated.
         params = loadedParams;
         cfg = loadedCfg;
+        temporal = params.frameDiffThreshold > 0.f;
+        temporalChoiceMade = true;
+        if (temporal) temporalDiffValue = params.frameDiffThreshold;
+        pipe.resetTemporal();
         styleP = withStyle ? loaded : StyleParams{};
         if (!withStyle) cfg.layerSpecs.clear();
         guiStyle = withStyle ? std::max(0, styles::indexOf(key)) : 0;
@@ -1777,16 +1791,39 @@ int main(int argc, char** argv) {
         // ── E. Video motion (video only, always last) ───────────────
         if (gui.kind == InputKind::Video && ui::Section("Video motion", false)) {
             ui::Caption("Previewed during playback and export.");
-            if (ui::Toggle("Steady strokes", &temporal,
-                           "Reuses paint where nothing moved, which stops flicker.")) {
-                temporalChoiceMade = true;
-                params.frameDiffThreshold = temporal ? 12.f : 0.f;
-                pipe.resetTemporal();
+            const char* frameModes[] = {"Keep stable strokes", "Repaint whole frame"};
+            const int frameMode = temporal ? 0 : 1;
+            if (ui::BeginSelect("Frame painting", frameModes[frameMode])) {
+                for (int i = 0; i < 2; ++i)
+                    if (ui::SelectItem(frameModes[i], i == frameMode)) {
+                        temporal = i == 0;
+                        temporalChoiceMade = true;
+                        params.frameDiffThreshold = temporal ? temporalDiffValue : 0.f;
+                        settingsChanged = true;
+                        pipe.resetTemporal();
+                    }
+                ui::EndSelect();
             }
-            ui::BeginDisabledWhy(!temporal, "Turn on Steady strokes first.");
+            ui::Tooltip("Keep stable strokes reuses unchanged paint. Repaint whole frame "
+                        "builds a new painting from the source for every video frame.");
+            if (!temporal) {
+                ui::Caption("Paint the entire frame anew, with no paint carried forward.");
+                bool vary = params.jitterPerFrame > 0.5f;
+                if (ui::Toggle("Vary strokes each frame", &vary,
+                               "Adds fresh stroke variation on each video frame, including "
+                               "areas where the image stays still.")) {
+                    params.jitterPerFrame = vary ? 1.f : 0.f;
+                    settingsChanged = true;
+                    pipe.resetTemporal();
+                }
+            }
+            ui::BeginDisabledWhy(!temporal, "Select Keep stable strokes to use motion reuse.");
             const float defDiff = 12.f;
-            sf("Repaint sensitivity", &params.frameDiffThreshold, 1.f, 64.f, "%.0f", &defDiff,
-               "Source change needed to repaint a cell. Lower = repaint more often.");
+            const float diffMin = std::min(1.f, temporalDiffValue);
+            const float diffMax = std::max(64.f, temporalDiffValue);
+            if (sf("Repaint sensitivity", &temporalDiffValue, diffMin, diffMax, "%.0f", &defDiff,
+                   "Source change needed to repaint a cell. Lower = repaint more often.") && temporal)
+                params.frameDiffThreshold = temporalDiffValue;
             sf("Fresh paint on movement", &cfg.freshPaint, 0.f, 1.f, "%.2f", &kDefC.freshPaint,
                "Repaints fast-moving areas each frame instead of dragging old paint along.");
             if (ui::Disclosure("Advanced##video")) {
@@ -1907,15 +1944,9 @@ int main(int argc, char** argv) {
                 ui::EndDisabledWhy();
                 if (!temporal) {
                     ui::Gap(ui::M.s1);
-                    ui::Notice(ui::Tone::Accent, "Steady strokes is off, so every frame is "
-                                                 "painted from scratch and the video will "
-                                                 "shimmer.");
-                    if (ui::Button("Turn on steady strokes")) {
-                        temporal = true;
-                        temporalChoiceMade = true;
-                        params.frameDiffThreshold = 12.f;
-                        pipe.resetTemporal();
-                    }
+                    ui::Caption(params.jitterPerFrame > 0.5f
+                        ? "Repaint whole frame, with new stroke variation each frame."
+                        : "Repaint whole frame, with repeatable stroke variation.");
                 }
                 ui::Caption("Encoder %s, preset %s (set with --vcodec / --vpreset).",
                             opt.vcodec.c_str(), opt.vpreset.c_str());
@@ -2730,6 +2761,7 @@ int main(int argc, char** argv) {
                 }
                 if (playing) {
                     pipe.setSource(playFrame.data(), gui.video.width, gui.video.height);
+                    gui.sourceFrame = uint64_t(playCount);
                     ++playCount;
                     ++playFpsCount;
                 }
@@ -2784,7 +2816,10 @@ int main(int argc, char** argv) {
         params.tensorSigma = tensorOn ? tensorSigmaValue : 0.f;
         // Paint only when an input actually changed: a still that nobody is
         // touching is painted once, not 60 times a second.
-        painted = pipe.renderIfChanged(params, cfg, playing && temporal);
+        TuningParams previewParams = params;
+        if (gui.kind == InputKind::Video && params.jitterPerFrame > 0.5f)
+            previewParams.frame = float(gui.sourceFrame);
+        painted = pipe.renderIfChanged(previewParams, cfg, playing && temporal);
         params.frame += 1.f;
 
         const Layout L = computeLayout();
@@ -2999,6 +3034,7 @@ int main(int argc, char** argv) {
                 vs.preset = opt.vpreset;
                 vs.keepAudio = gui.keepAudio;
                 TuningParams exportParams = params;
+                exportParams.frame = 0.f;
                 exportParams.frameDiffThreshold = temporal
                     ? std::max(1.f, params.frameDiffThreshold) : 0.f;
                 res = jobs::runVideo(pipe, exportParams, cfg, vs, pump);

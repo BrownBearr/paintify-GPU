@@ -59,6 +59,19 @@ The ZIP contains paintify.exe, its linked runtime DLLs, shaders, run.bat, and th
 
 --style chooses a brush texture. --preset chooses a radius set; legacy names such as impressionist remain accepted. --style-scale is an optional procedural brush width multiplier. --help lists the rest of the painting, video, and export flags.
 
+## Frame painting for video
+
+In Look > Video motion, Frame painting offers two modes:
+
+- Keep stable strokes: reuse paint where the image has not changed.
+- Repaint whole frame: rebuild the painting from the current source frame, carrying no paint forward. Enable Vary strokes each frame for fresh stroke variation even in still areas.
+
+The selection applies to playback and export and is stored in saved looks. Variation advances with decoded video frames; pausing keeps the preview still.
+
+For command-line exports, use --temporal-diff 0 with --jitter-per-frame for an animated repaint, or --no-jitter-per-frame for repeatable strokes. Loading a saved look preserves its variation choice unless either flag explicitly overrides it.
+
+The Windows regression check is python tools/motion_repaint_audit.py --exe build-review/paintify.exe. It compares decoded frames from four lossless exports: repeatable repaint, varied repaint, a saved look, and an explicit override.
+
 ## Functional audit
 
 | Workflow | Status |
