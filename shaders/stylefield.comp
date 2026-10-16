@@ -25,10 +25,18 @@ const float PI = 3.14159265;
 
 vec2 d2(float a) { return vec2(cos(2.0 * a), sin(2.0 * a)); }
 
+// Orthogonal axes can cancel in doubled-angle space. Keep the incoming
+// direction at that tie rather than let round-off or atan(0, 0) choose it.
+float axisAngle(vec2 axis, float incoming) {
+    if (dot(axis, axis) < 1e-12) return incoming;
+    return 0.5 * atan(axis.y, axis.x);
+}
+
 float imgAngle(ivec2 q, out float mag) {
     ivec2 size = ivec2(IMG_SIZE);
     vec3 g = texelFetch(uGrad, clamp(q, ivec2(0), size - 1), 0).rgb;
     mag = g.z;
+    if (dot(g.xy, g.xy) == 0.0) return 0.0;
     return atan(g.x, -g.y);   // angle of perp(g) = (-gy, gx)
 }
 
@@ -37,6 +45,7 @@ float curlAngle(vec2 p) {
     float e = 1.0;
     float dx = fbm((p + vec2(e, 0.0)) / sc, 3, 601u) - fbm((p - vec2(e, 0.0)) / sc, 3, 601u);
     float dy = fbm((p + vec2(0.0, e)) / sc, 3, 601u) - fbm((p - vec2(0.0, e)) / sc, 3, 601u);
+    if (dx == 0.0 && dy == 0.0) return 0.0; // curl stagnation point
     return atan(-dx, dy);     // streamline of the stream function: (dpsi/dy, -dpsi/dx)
 }
 
@@ -83,7 +92,8 @@ void main() {
     // source tangent with the fallback angle before that blend even starts.
     float conf = clamp(mag / max(ST_COHERENCE_MIN, 1e-4), 0.0, 1.0);
     bool hasImage = dot(source.xy, source.xy) > 0.0;
-    vec2 acc = d2(hasImage ? aImg : fallbackAngle(p));
+    float incoming = hasImage ? aImg : fallbackAngle(p);
+    vec2 acc = d2(incoming);
 
     if (mode == 1) {
         // Turner: tangential flow around the eye, tilted inward so it spirals
@@ -92,7 +102,9 @@ void main() {
         vec2 dv = p - c;
         dv.y /= 1.1;
         float r = length(dv) / max(IMG_SIZE.x, IMG_SIZE.y);
-        float a = atan(dv.y, dv.x) + 0.5 * PI + ST_VORTEX_SPIRAL;
+        float a = incoming; // the exact eye has no tangential direction
+        if (dot(dv, dv) > 0.0)
+            a = atan(dv.y, dv.x) + 0.5 * PI + ST_VORTEX_SPIRAL;
         float wv = exp(-pow(r / max(ST_VORTEX_RADIUS, 1e-3), 2.0)) * mixW;
         float w = 0.05 * mixW + 0.9 * wv;
         acc = mix(acc, d2(a), w);
@@ -107,7 +119,9 @@ void main() {
         float as_ = imgAngle(sp, ms);
         float cs = clamp(ms / max(ST_COHERENCE_MIN, 1e-4), 0.0, 1.0);
         vec2 sd = d2(as_) * cs + d2(fallbackAngle(vec2(sp))) * (1.0 - cs);
-        float a = 0.5 * atan(sd.y, sd.x);
+        vec2 seedGrad = texelFetch(uGrad, clamp(sp, ivec2(0), size - 1), 0).xy;
+        float seedAngle = dot(seedGrad, seedGrad) > 0.0 ? as_ : fallbackAngle(vec2(sp));
+        float a = axisAngle(sd, seedAngle);
         a += (hash01(id) * 2.0 - 1.0) * ST_PATCH_JITTER;
         if (ST_PATCH_QUANT > 0.0) a = floor(a / ST_PATCH_QUANT + 0.5) * ST_PATCH_QUANT;
         acc = mix(acc, d2(a), mixW);
@@ -126,7 +140,7 @@ void main() {
         acc = mix(acc, d2(radians(ST_FALLBACK_ANGLE)), mixW);
     }
 
-    float ang = 0.5 * atan(acc.y, acc.x);
+    float ang = axisAngle(acc, incoming);
     // Doubled angles describe an unoriented axis. Choose the sign nearest the
     // source vector so a tiny pattern amount cannot reverse the initial walk.
     if (hasImage && dot(vec2(sin(ang), -cos(ang)), source.xy) < 0.0) ang += PI;

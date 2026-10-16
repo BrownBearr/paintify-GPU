@@ -20,3 +20,5 @@ An optional frozen pre-fix shader directory can print the original field angles:
 The directory is relative to the repository root and is not needed for any
 analytic regression assertion. The optional baseline only adds the comparison
 of full fixed-angle axes and magnitudes against the previous implementation.
+
+The expanded suite also compares every mode against CPU references, exercises partial workgroups, exact axial cancellations and swirl centers, and probes the production curl helper with GPU-confirmed zero derivatives. See [the direction audit](../docs/DIRECTION_AUDIT.md) for results, scope, and the known sharp transition between orthogonal axes near half strength.

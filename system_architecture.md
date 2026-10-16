@@ -487,6 +487,7 @@ strength zero takes the same source-field path, and increasing strength blends
 from the actual image tangent and magnitude. Swirl's ambient contribution also
 scales with strength. Doubled-angle output keeps the sign nearest the source
 vector so small pattern amounts do not reverse the initial trace direction.
+Zero image/curl vectors and the exact swirl eye have deterministic angle fallbacks. When doubled-angle axes cancel, the field keeps the incoming axis; the tie guard acts on the unit-axis blend, never on source-gradient strength.
 
 ## Per-layer roles
 
