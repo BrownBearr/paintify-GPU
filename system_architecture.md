@@ -477,6 +477,18 @@ The canvas is the painting's state. `error.comp`, `trace.comp` and the next vide
 | after relax | Legacy `impasto.comp` is skipped when the style has its own finish. `runPost()`: smear or wash → `finish.comp` → `post.comp` overlays |
 | temporal | Exposed borders (flow-warped UV outside the frame) get a fresh lay-in and diff = 255. `temporalRefresh` repaints a hash-scattered fraction of unchanged cells each frame |
 
+`Follow image` (field mode 0) preserves the Sobel/ST/ETF gradient vector and
+magnitude. Only an explicitly chosen wobble or per-layer rotation rotates that
+vector. Weak image gradients must never be blended toward a fixed fallback
+angle: that previously pulled all brush textures toward the default -55 degrees.
+Flat regions retain the source gradient floor. The fallback/confidence and
+minimum-field-magnitude controls belong to the pattern modes (1-5). Pattern
+strength zero takes the same source-field path, and increasing strength blends
+from the actual image tangent and magnitude. Swirl's ambient contribution also
+scales with strength. Doubled-angle output keeps the sign nearest the source
+vector so small pattern amounts do not reverse the initial trace direction.
+Zero image/curl vectors and the exact swirl eye have deterministic angle fallbacks. When doubled-angle axes cancel, the field keeps the incoming axis; the tie guard acts on the unit-axis blend, never on source-gradient strength.
+
 ## Per-layer roles
 
 brushkit paints a style in several passes with different brushes. Here each Hertzmann layer is one pass.
