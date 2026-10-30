@@ -29,7 +29,9 @@ bool initContext(GLFWwindow* win) {
         fprintf(stderr, "glad failed\n");
         return false;
     }
-    glfwSwapInterval(0);   // vsync off: the overlay is meant to show real cost
+    // The UI and canvas are presented together. Uncapped swaps tear through
+    // both layers and can look like flicker even when the document is idle.
+    glfwSwapInterval(1);
     return true;
 }
 
@@ -55,7 +57,16 @@ void rebuildFontTexture() {
     ImGui_ImplOpenGL3_CreateFontsTexture();
 }
 
-bool beginFrame(GLFWwindow*) { return true; }
+bool beginFrame(GLFWwindow*) {
+    // The paint pipeline uses offscreen FBOs and changes raster state. Start
+    // the window frame from a known target/state before clearing and drawing
+    // ImGui, including on frames where renderIfChanged skips painting.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    return true;
+}
 
 void imguiNewFrame() {
     ImGui_ImplOpenGL3_NewFrame();
