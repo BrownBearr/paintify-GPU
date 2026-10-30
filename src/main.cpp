@@ -2643,6 +2643,9 @@ int main(int argc, char** argv) {
     auto clearFrame = [&](const Layout& FL) {
         const ImVec4 b = ui::backdropColor(ui::Backdrop(backdrop));
         pipe.setBackdrop(b.x, b.y, b.z);
+        // Keep both clears on the window surface even if a prior pipeline
+        // operation returned early while an offscreen target was bound.
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, FL.fbTotalW, FL.fbTotalH);
         glDisable(GL_SCISSOR_TEST);
         glClearColor(ui::C.bgApp.x, ui::C.bgApp.y, ui::C.bgApp.z, 1.f);
